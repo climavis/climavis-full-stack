@@ -1,0 +1,25 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - NODE_MAJOR=18
+    container_name: climate-dashboard
+    working_dir: /app
+    command: ["python", "start.py"]
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+      - "${FRONTEND_PORT:-5173}:5173"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ./:/app
+      - node_modules:/app/frontend/node_modules
+    restart: unless-stopped
+
+volumes:
+  node_modules:

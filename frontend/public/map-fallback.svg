@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Simple SVG map of Mexico -->
+<svg width="800" height="600" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect x="0" y="0" width="800" height="600" fill="#f8f9fa"/>
+  
+  <!-- Mexico outline (simplified) -->
+  <path d="M200,150 L300,100 L500,150 L600,200 L650,300 L600,400 L500,450 L400,500 L300,450 L250,400 L200,350 L150,300 L200,150 Z" 
+        fill="#e9ecef" stroke="#495057" stroke-width="2"/>
+  
+  <!-- Internal state borders (simplified) -->
+  <path d="M250,200 L450,200 M350,150 L350,350 M250,300 L550,300 M450,200 L550,400" 
+        fill="none" stroke="#adb5bd" stroke-width="1"/>
+  
+  <!-- Title -->
+  <text x="400" y="50" font-family="Arial" font-size="24" text-anchor="middle" fill="#212529">Mapa de México</text>
+  
+  <!-- Caption -->
+  <text x="400" y="550" font-family="Arial" font-size="16" text-anchor="middle" fill="#495057">
+    Mapa estático - Seleccione un estado para más información
+  </text>
+</svg>
