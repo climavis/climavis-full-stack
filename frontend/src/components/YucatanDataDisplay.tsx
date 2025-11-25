@@ -1,8 +1,9 @@
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
+import { useEffect, useState } from 'react';
+import { getClimateStats } from '../services/api';
 import { 
-  yucatanHistoricalData, 
   yucatanAgriculturalData, 
   yucatanBiodiversityData, 
   yucatanTourismData 
@@ -27,24 +28,93 @@ interface YucatanDataDisplayProps {
   selectedMonth: number;
 }
 
+interface ClimateDataState {
+  temperature: number;
+  precipitation: number;
+  humidity: number;
+  uvIndex: number;
+  windSpeed: number;
+  pressure: number;
+  visibility: number;
+  dewPoint: number;
+}
+
 export function YucatanDataDisplay({ 
   selectedLocation, 
   selectedYear, 
   selectedMonth 
 }: YucatanDataDisplayProps) {
-  // Obtener datos del año y mes seleccionados
-  const yearData = yucatanHistoricalData[selectedYear] || yucatanHistoricalData[2023];
-  const monthlyData = yearData[selectedMonth];
+  const [monthlyData, setMonthlyData] = useState<ClimateDataState | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   const agriculturalData = yucatanAgriculturalData[selectedMonth] || yucatanAgriculturalData[0];
   const biodiversityData = yucatanBiodiversityData[selectedMonth] || yucatanBiodiversityData[0];
   const tourismData = yucatanTourismData[selectedMonth] || yucatanTourismData[0];
 
-  if (!monthlyData) {
+  // Cargar datos reales del backend
+  useEffect(() => {
+    const fetchClimateData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // La base de datos usa "YUCATAN" sin acento
+        const stats = await getClimateStats('YUCATAN', {
+          anio: selectedYear,
+          mes: selectedMonth + 1 // API espera mes 1-12, no 0-11
+        });
+        
+        // Verificar si hay datos válidos
+        const hasValidData = stats && (
+          (stats.temperatura?.promedio > 0) ||
+          (stats.precipitacion?.promedio > 0) ||
+          (stats.humedad_promedio > 0) ||
+          (stats.total_registros > 0)
+        );
+
+        if (!hasValidData) {
+          setError(`No hay datos disponibles para ${['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][selectedMonth]} ${selectedYear}`);
+          setMonthlyData(null);
+          return;
+        }
+        
+        // Mapear datos de la API al formato esperado
+        setMonthlyData({
+          temperature: stats.temperatura?.promedio || 0,
+          precipitation: stats.precipitacion?.promedio || 0,
+          humidity: stats.humedad_promedio || 0,
+          uvIndex: 7, // Por ahora usar valor por defecto
+          windSpeed: stats.viento_promedio || 0,
+          pressure: 1013, // Por ahora usar valor por defecto
+          visibility: 10, // Por ahora usar valor por defecto
+          dewPoint: stats.temperatura?.promedio ? stats.temperatura.promedio - 5 : 20 // Estimación
+        });
+      } catch (err) {
+        console.error('Error cargando datos climáticos:', err);
+        setError('Error al cargar datos del servidor');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchClimateData();
+  }, [selectedYear, selectedMonth]);
+
+  if (loading) {
     return (
       <Card className="p-6">
         <p className="text-center text-muted-foreground">
-          No hay datos disponibles para {selectedYear}/{selectedMonth + 1}
+          Cargando datos...
+        </p>
+      </Card>
+    );
+  }
+
+  if (error || !monthlyData) {
+    return (
+      <Card className="p-6">
+        <p className="text-center text-muted-foreground">
+          {error || `No hay datos disponibles para ${selectedYear}/${selectedMonth + 1}`}
         </p>
       </Card>
     );

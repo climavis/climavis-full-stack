@@ -1,4 +1,3 @@
-import { Card } from './ui/card';
 import { Slider } from './ui/slider';
 import { Label } from './ui/label';
 import { Button } from './ui/button';
@@ -69,11 +68,11 @@ export function TimeControls({ selectedYear, selectedMonth, onYearChange, onMont
   };
 
   return (
-    <Card className="p-6">
+    <div className="p-6 rounded-3xl glass-card">
       <div className="space-y-6">
         <div>
-          <h3 className="font-medium mb-2">Controles Temporales</h3>
-          <p className="text-sm text-muted-foreground">
+          <h3 className="font-medium mb-2 text-gray-900 dark:text-white">Controles Temporales</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-300">
             Explora datos históricos y predicciones climáticas
           </p>
         </div>
@@ -81,20 +80,20 @@ export function TimeControls({ selectedYear, selectedMonth, onYearChange, onMont
         {/* Año */}
         <div className="space-y-3">
           <div className="flex justify-between items-center">
-            <Label>Año: {selectedYear}</Label>
-            <div className="text-sm text-muted-foreground">
+            <Label className="text-gray-900 dark:text-white">Año: {selectedYear}</Label>
+            <div className="px-3 py-1 rounded-full glass-button border-0 text-xs">
               {selectedYear > currentYear ? 'Predicción' : 'Histórico'}
             </div>
           </div>
           <Slider
             value={[selectedYear]}
-            onValueChange={([value]: number[]) => onYearChange(value)}
+            onValueChange={(values: number[]) => onYearChange(values[0])}
             min={minYear}
             max={maxYear}
             step={1}
             className="w-full"
           />
-          <div className="flex justify-between text-xs text-muted-foreground">
+          <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
             <span>{minYear}</span>
             <span>Actual: {currentYear}</span>
             <span>{maxYear}</span>
@@ -103,16 +102,16 @@ export function TimeControls({ selectedYear, selectedMonth, onYearChange, onMont
 
         {/* Mes */}
         <div className="space-y-3">
-          <Label>Mes: {months[selectedMonth]}</Label>
+          <Label className="text-gray-900 dark:text-white">Mes: {months[selectedMonth]}</Label>
           <Slider
             value={[selectedMonth]}
-            onValueChange={([value]: number[]) => onMonthChange(value)}
+            onValueChange={(values: number[]) => onMonthChange(values[0])}
             min={0}
             max={11}
             step={1}
             className="w-full"
           />
-          <div className="flex justify-between text-xs text-muted-foreground">
+          <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
             <span>Ene</span>
             <span>Jun</span>
             <span>Dic</span>
@@ -120,22 +119,22 @@ export function TimeControls({ selectedYear, selectedMonth, onYearChange, onMont
         </div>
 
         {/* Controles de reproducción */}
-        <div className="flex items-center justify-center space-x-2 pt-4 border-t">
-          <Button variant="outline" size="sm" onClick={handlePrevious}>
+        <div className="flex items-center justify-center space-x-2 pt-4 border-t border-white/20 dark:border-white/10">
+          <Button variant="outline" size="sm" onClick={handlePrevious} className="glass-button border-0">
             <SkipBack className="h-4 w-4" />
           </Button>
-          <Button variant="outline" size="sm" onClick={handlePlayPause}>
+          <Button variant="outline" size="sm" onClick={handlePlayPause} className="glass-button border-0">
             {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </Button>
-          <Button variant="outline" size="sm" onClick={handleNext}>
+          <Button variant="outline" size="sm" onClick={handleNext} className="glass-button border-0">
             <SkipForward className="h-4 w-4" />
           </Button>
         </div>
 
-        <div className="text-center text-sm text-muted-foreground">
+        <div className="text-center text-sm font-medium text-gray-900 dark:text-white">
           {months[selectedMonth]} {selectedYear}
         </div>
       </div>
-    </Card>
+    </div>
   );
 }

@@ -1,0 +1,24 @@
+{
+  "appId": "com.climavis.dashboard",
+  "productName": "climavis-dashboard",
+  "directories": {
+    "output": "dist_electron",
+    "buildResources": "build"
+  },
+  "files": [
+    "main.js",
+    "preload.js",
+    "dist/**",
+    "node_modules/**",
+    "package.json"
+  ],
+  "win": {
+    "target": ["portable"]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowElevation": true,
+    "allowToChangeInstallationDirectory": true
+  }
+}

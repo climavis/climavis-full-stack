@@ -6,6 +6,7 @@ Base de datos: SQLite
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from typing import Optional
 import sqlite3
 from datetime import datetime
@@ -160,7 +161,8 @@ def get_clima(
 @app.get("/api/clima/stats")
 def get_clima_stats(
     estado: str = Query(..., description="Nombre del estado"),
-    anio: Optional[int] = Query(None, description="Año para estadísticas")
+    anio: Optional[int] = Query(None, description="Año para estadísticas"),
+    mes: Optional[int] = Query(None, description="Mes para estadísticas (1-12)")
 ):
     """
     Obtiene estadísticas climáticas agregadas para un estado
@@ -188,6 +190,10 @@ def get_clima_stats(
             query += " AND strftime('%Y', fecha) = ?"
             params.append(str(anio))
         
+        if mes:
+            query += " AND strftime('%m', fecha) = ?"
+            params.append(f"{mes:02d}")
+        
         cursor.execute(query, params)
         row = cursor.fetchone()
         
@@ -196,6 +202,7 @@ def get_clima_stats(
         stats = {
             "estado": estado,
             "anio": anio,
+            "mes": mes,
             "total_registros": row["total_registros"],
             "temperatura": {
                 "promedio": round(row["temp_promedio"], 2) if row["temp_promedio"] else None,
@@ -214,6 +221,31 @@ def get_clima_stats(
             "success": True,
             "data": stats
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/eventos-climaticos")
+def get_eventos_climaticos():
+    """
+    Endpoint para obtener los eventos climáticos actuales
+    Lee el archivo markdown con los eventos en curso
+    """
+    try:
+        eventos_path = os.path.join(os.path.dirname(__file__), "../info/eventos_climaticos.md")
+        
+        if not os.path.exists(eventos_path):
+            raise HTTPException(status_code=404, detail="Archivo de eventos no encontrado")
+        
+        return FileResponse(
+            eventos_path,
+            media_type="text/markdown",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

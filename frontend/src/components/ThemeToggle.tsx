@@ -40,8 +40,7 @@ export function ThemeToggle({ onThemeChange }: ThemeToggleProps) {
       variant="outline"
       size="sm"
       onClick={toggleTheme}
-      className="flex items-center space-x-2 transition-colors duration-500 h-8 px-3"
-      style={{ minWidth: 90 }}
+      className="glass-button flex items-center space-x-2 border-0"
     >
       {isDark ? (
         <>

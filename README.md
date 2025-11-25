@@ -125,6 +125,75 @@ This command will:
 - Start the FastAPI backend on http://localhost:8000 (binds to 0.0.0.0).
 - Start the Vite development server on http://localhost:5173 (binds to 0.0.0.0) and open the browser.
 
+## 🖥️ Ejecutar como aplicación de escritorio (Electron)
+
+Se incluye una configuración básica de Electron para empaquetar el frontend junto con un intento de inicializar el backend localmente.
+
+### Desarrollo con Electron
+
+1. Arranca primero el backend (si necesitas datos reales):
+  ```powershell
+  python .\start.py  # o solo backend si personalizas el script
+  ```
+2. En otra terminal inicia el servidor de Vite:
+  ```powershell
+  cd frontend
+  npm run dev
+  ```
+3. Lanza la app de escritorio:
+  ```powershell
+  cd frontend
+  npm run electron:dev
+  ```
+
+La variable `ELECTRON_DEV` activa la carga desde el servidor de desarrollo en `http://localhost:5173`.
+
+### Build de producción (instalador)
+
+```powershell
+cd frontend
+npm install  # asegurar dependencias
+npm run build        # construye el frontend (dist)
+npm run electron:build  # genera instalador en dist_electron
+```
+
+Esto usa `electron-builder` con destino NSIS para Windows. Ajusta `electron-builder.json` para agregar íconos, firma de código, o targets adicionales (dmg, AppImage, etc.).
+
+### Características clave
+
+- GPU deshabilitada vía `app.disableHardwareAcceleration()` para evitar problemas gráficos.
+- Preload mínimo con `contextIsolation` activado (seguridad).
+- Carga dinámica de URL de backend (`VITE_API_URL` en `.env`). Por defecto: `http://localhost:8000`.
+- Intento best-effort de iniciar `start.py` al arrancar la app Electron si existe Python en el PATH.
+
+### Personalizar ícono y nombre
+
+Edita `frontend/electron-builder.json`:
+```jsonc
+{
+  "productName": "ClimaVis Dashboard",
+  "win": { "target": ["nsis"], "icon": "build/icon.ico" }
+}
+```
+Coloca tu ícono en `frontend/build/icon.ico`.
+
+### Seguridad y empaquetado
+
+- No se expone Node integration en el renderer.
+- Si necesitas más APIs, expórtalas de forma controlada en `electron/preload.js` usando `contextBridge`.
+- Para distribuir sin backend embebido, considera empaquetar un binario Python (PyInstaller) o mover el backend a un servicio remoto y apuntar `VITE_API_URL` a ese host.
+
+### Solución de problemas
+
+| Problema | Posible causa | Solución |
+|----------|---------------|----------|
+| Ventana en blanco | Servidor Vite no iniciado en modo dev | Ejecuta `npm run dev` antes de `electron:dev` |
+| Datos vacíos | Backend no iniciado o puerto distinto | Verifica que FastAPI corre en `http://localhost:8000` o ajusta `.env` |
+| Instalador sin datos | Python no disponible al inicio | Pre-inicia backend manualmente o empaqueta backend |
+| Ícono genérico | Falta `icon.ico` en build resources | Añade ícono y actualiza `electron-builder.json` |
+
+---
+
 ## Manual setup
 
 ### Frontend (development)

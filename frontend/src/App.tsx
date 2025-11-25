@@ -1,153 +1,129 @@
-import { useState } from 'react';
-import { MapComponent } from './components/MapComponent';
-import { MapErrorBoundary } from './components/MapErrorBoundary';
+import { useState, lazy, Suspense, useEffect } from 'react';
 import { StateSelector } from './components/StateSelector';
 import { TimeControls } from './components/TimeControls';
 import { ClimateDataDisplay } from './components/ClimateDataDisplay';
 import { PredictionPanel } from './components/PredictionPanel';
 import { ThemeToggle } from './components/ThemeToggle';
-import { Card } from './components/ui/card';
-import { Badge } from './components/ui/badge';
+import { WeatherWidget } from './components/WeatherWidget';
+import { MapView } from './components/MapView';
+import NewsTicker from './components/NewsTicker';
 import { Button } from './components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip';
-import { Database, TrendingUp, MapPin, CloudSun } from 'lucide-react';
-import AppYucatan from './AppYucatan';
+import { Github } from 'lucide-react';
+import ErrorBoundary from './components/ErrorBoundary';
+
+// Lazy load AppYucatan para reducir el bundle inicial
+const AppYucatan = lazy(() => import('./AppYucatan'));
 
 export default function App() {
-  // Preseleccionamos un estado con datos para que la vista central no aparezca vacía
-  const [selectedState, setSelectedState] = useState<string | null>('Aguascalientes');
+  const [selectedState, setSelectedState] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  
+  // Debug log when state changes
+  useEffect(() => {
+    console.debug('[App] Selected state changed:', selectedState);
+  }, [selectedState]);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [currentView, setCurrentView] = useState<'main' | 'yucatan'>('main');
+  const [isHeaderCompact, setIsHeaderCompact] = useState(false);
+  const [isHeaderHidden, setIsHeaderHidden] = useState(false);
+
+  // Contraer/ocultar header al desplazarse y mostrarlo al hacer scroll hacia arriba
+  useEffect(() => {
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const delta = y - lastY;
+      // Compactar cuando se ha desplazado un poco
+      setIsHeaderCompact(y > 24);
+      // Ocultar al desplazarse hacia abajo; mostrar al subir
+      if (Math.abs(delta) > 5) {
+        setIsHeaderHidden(delta > 0 && y > 80);
+      }
+      lastY = y;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   // Renderizar vista de Yucatán si está seleccionada
   if (currentView === 'yucatan') {
-    return <AppYucatan onBackToMain={() => setCurrentView('main')} />;
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600 dark:text-gray-300">Cargando...</p>
+          </div>
+        </div>
+      }>
+        <AppYucatan onBackToMain={() => setCurrentView('main')} />
+      </Suspense>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 dark:from-gray-900 dark:via-gray-800 dark:to-blue-900">
+    <div className="min-h-screen relative overflow-hidden">
+      {/* Animated background gradient */}
+      <div className="fixed inset-0 -z-10" />
+      
       {/* Header */}
-      <header className="bg-white dark:bg-gray-900 border-b shadow-sm dark:border-gray-700">
+      <header className={`glass-header sticky top-0 z-50 backdrop-blur-lg transition-all duration-300 ease-out will-change-transform ${isHeaderHidden ? '-translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className={`flex items-center justify-between ${isHeaderCompact ? 'h-12' : 'h-16'}`}>
             <div className="flex items-center space-x-3">
-              <img
-                src={isDarkMode ? "/assets/white.svg" : "/assets/black.svg"}
-                alt="ClimaVis Logo"
-                className="h-8 w-8"
-              />
+              <div className="p-2 rounded-2xl glass-button">
+                <img 
+                  src={isDarkMode ? '/logo/white.svg' : '/logo/black.svg'} 
+                  alt="ClimaVis Logo" 
+                  className={`${isHeaderCompact ? 'h-5 w-5' : 'h-6 w-6'}`}
+                />
+              </div>
               <div>
-                <h1
-                  className="text-gray-900 dark:text-white"
-                  style={{
-                    fontFamily: "'Hanken Grotesk', sans-serif",
-                    fontWeight: 300,
-                    textTransform: 'lowercase',
-                  }}
-                >
-                  climavis
-                </h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400 hidden sm:block">Visualización y Predicción del Cambio Climático</p>
+                <div className="flex items-baseline gap-2">
+                  <h1 className={`font-medium text-gray-900 dark:text-white ${isHeaderCompact ? 'text-base' : 'text-lg'}`}>climavis</h1>
+                  <span className={`alpha-badge ${isHeaderCompact ? 'text-[10px]' : 'text-xs'}`}>alpha</span>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-300">Visualización y Predicción del Cambio Climático</p>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <TooltipProvider>
-                {/* Botón OpenStreetMap */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex items-center space-x-1"
-                      onClick={() => window.open('https://www.openstreetmap.org/', '_blank')}
-                    >
-                      <MapPin className="h-3 w-3" />
-                      <span className="hidden sm:inline">OpenStreetMap</span>
-                      <span className="sm:hidden">OSM</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-xs">
-                    <p className="font-medium mb-1">Mapa Base</p>
-                    <p className="text-xs text-muted-foreground">
-                      Usamos los servidores de OpenStreetMap para renderizar el mapa interactivo de México. 
-                      Haz clic para visitar su sitio web.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-
-                {/* Botón Open-Meteo */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex items-center space-x-1"
-                      onClick={() => window.open('https://open-meteo.com/', '_blank')}
-                    >
-                      <CloudSun className="h-3 w-3" />
-                      <span className="hidden sm:inline">Open-Meteo</span>
-                      <span className="sm:hidden">Meteo</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-xs">
-                    <p className="font-medium mb-1">Datos Meteorológicos</p>
-                    <p className="text-xs text-muted-foreground">
-                      Utilizamos la API de Open-Meteo para obtener datos climáticos históricos (2000-2025) y pronósticos en tiempo real. 
-                      Haz clic para visitar su sitio web.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-
-                {/* Badge de Predicciones IA */}
-                <Badge variant="outline" className="hidden md:flex items-center space-x-1">
-                  <TrendingUp className="h-3 w-3" />
-                  <span>Predicciones IA</span>
-                </Badge>
-              </TooltipProvider>
-              
+            <div className="flex items-center space-x-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open('https://github.com/climavis/full-stack', '_blank')}
+                className="glass-button flex items-center space-x-2 border-0"
+              >
+                <Github className="h-4 w-4" />
+                <span className="hidden sm:inline">GitHub</span>
+              </Button>
               <ThemeToggle onThemeChange={setIsDarkMode} />
             </div>
           </div>
         </div>
       </header>
 
+      {/* News Ticker - Cinta de eventos climáticos */}
+      <NewsTicker />
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Panel de información */}
-        <Card className="mb-8 p-6 bg-gradient-to-r from-blue-500 to-green-500 dark:from-blue-600 dark:to-green-600 text-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-medium mb-2">
-                ClimaVis - Dashboard Interactivo de Cambio Climático
-              </h2>
-              <p className="text-blue-100 dark:text-blue-200">
-                Explora datos históricos y predicciones climáticas para todos los estados de México. 
-                Utiliza los controles temporales para navegar a través del tiempo y descubrir tendencias climáticas.
-              </p>
-            </div>
-            <div className="text-right hidden lg:block">
-              <div className="text-2xl font-medium">
-                30+
-              </div>
-              <div className="text-sm text-blue-100 dark:text-blue-200">Estados disponibles</div>
-            </div>
-          </div>
-        </Card>
+        {/* Main Map View */}
+        <div className="mb-8">
+          <MapView 
+            selectedState={selectedState} 
+            selectedYear={selectedYear}
+            selectedMonth={selectedMonth}
+            onStateSelect={setSelectedState}
+          />
+        </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-          {/* Columna izquierda: Selector, Mapa y Controles */}
+          {/* Columna izquierda: Selector de estado y controles */}
           <div className="xl:col-span-1 space-y-6">
             <StateSelector
               selectedState={selectedState}
               onStateSelect={setSelectedState}
             />
-            <MapErrorBoundary>
-              <MapComponent
-                selectedState={selectedState}
-                onStateSelect={setSelectedState}
-              />
-            </MapErrorBoundary>
             
             <TimeControls
               selectedYear={selectedYear}
@@ -155,48 +131,42 @@ export default function App() {
               onYearChange={setSelectedYear}
               onMonthChange={setSelectedMonth}
             />
+
+            <WeatherWidget selectedState={selectedState} />
           </div>
 
           {/* Columna central: Datos climáticos */}
           <div className="xl:col-span-2">
-            <ClimateDataDisplay
-              selectedState={selectedState}
-              selectedYear={selectedYear}
-              selectedMonth={selectedMonth}
-            />
+            <ErrorBoundary>
+              <ClimateDataDisplay
+                selectedState={selectedState}
+                selectedYear={selectedYear}
+                selectedMonth={selectedMonth}
+              />
+            </ErrorBoundary>
           </div>
 
           {/* Columna derecha: Predicciones */}
           <div className="xl:col-span-1">
-            <PredictionPanel
-              selectedState={selectedState}
-              selectedYear={selectedYear}
-              selectedMonth={selectedMonth}
-            />
+            <ErrorBoundary>
+              <PredictionPanel
+                selectedState={selectedState}
+                selectedYear={selectedYear}
+                selectedMonth={selectedMonth}
+              />
+            </ErrorBoundary>
           </div>
         </div>
-
-        <div className="h-8"></div>
-
-        {/* Footer con información adicional */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="p-4">
-            <h4 className="font-medium mb-2">Datos Históricos</h4>
-            <p className="text-sm text-muted-foreground">
-              Los datos históricos abarcan desde el año 2000 hasta 2025, 
-              basados en registros meteorológicos oficiales.
-            </p>
-          </Card>
-          
-          <Card className="p-4">
-            <h4 className="font-medium mb-2">Predicciones Climáticas</h4>
-            <p className="text-sm text-muted-foreground">
-              Las predicciones utilizan modelos de inteligencia artificial 
-              para proyectar cambios hasta el año 2030.
-            </p>
-          </Card>
-        </div>
       </div>
+
+      {/* Footer */}
+      <footer className="mt-12 pb-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center text-sm text-gray-600 dark:text-gray-400">
+            De <span className="font-bold">Yucatán</span>, para <span className="font-bold">México</span> 🫶
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
