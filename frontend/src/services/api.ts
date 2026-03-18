@@ -1,8 +1,8 @@
 /**
  * Servicio de API para conectar con el backend FastAPI
+ * Optimizado: usa endpoints agregados para reducir llamadas al servidor.
  */
 
-// Obtener la URL base del backend dinámicamente, permitiendo override via env
 const DEFAULT_BACKEND_PORT = 8000;
 
 const resolveApiBaseUrl = (): string => {
@@ -17,37 +17,24 @@ const resolveApiBaseUrl = (): string => {
   return `http://localhost:${DEFAULT_BACKEND_PORT}`;
 };
 
-const API_BASE_URL = resolveApiBaseUrl();
+export const API_BASE_URL = resolveApiBaseUrl();
 
 const toNumber = (value: unknown, fallback = 0): number => {
-  if (value === null || value === undefined) {
-    return fallback;
-  }
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : fallback;
-  }
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+// ── Tipos ──────────────────────────────────────────────────────────
+
 export interface ClimateData {
   fecha: string;
   estado: string;
-  temperatura: {
-    maxima: number;
-    minima: number;
-    media: number;
-  };
+  temperatura: { maxima: number; minima: number; media: number };
   precipitacion: number;
-  viento: {
-    maximo: number;
-    medio: number;
-  };
-  humedad: {
-    maxima: number;
-    minima: number;
-    media: number;
-  };
+  viento: { maximo: number; medio: number };
+  humedad: { maxima: number; minima: number; media: number };
 }
 
 export interface ClimateStats {
@@ -55,17 +42,43 @@ export interface ClimateStats {
   anio: number | null;
   mes: number | null;
   total_registros: number;
-  temperatura: {
-    promedio: number;
-    maxima: number;
-    minima: number;
-  };
-  precipitacion: {
-    promedio: number;
-    total: number;
-  };
+  temperatura: { promedio: number; maxima: number; minima: number };
+  precipitacion: { promedio: number; total: number };
   humedad_promedio: number;
   viento_promedio: number;
+}
+
+export interface MonthlyData {
+  month: string;
+  monthNumber: number;
+  temperatura: number;
+  precipitacion: number;
+  humedad: number;
+  viento: number;
+  registros: number;
+}
+
+export interface MapSummary {
+  [state: string]: {
+    temperatura: number | null;
+    precipitacion: number | null;
+    viento: number | null;
+    humedad: number | null;
+    registros: number;
+  };
+}
+
+export interface AnnualData {
+  year: number;
+  temperatura: number;
+  precipitacion: number;
+  registros: number;
+}
+
+export interface SyncProgress {
+  status: string;
+  detail: string;
+  progress: number;
 }
 
 export interface ApiResponse<T> {
@@ -75,186 +88,186 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
-/**
- * Obtiene la lista de todos los estados disponibles
- */
-export async function getEstados(): Promise<string[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/estados`);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const result: ApiResponse<string[]> = await response.json();
-    return result.data;
-  } catch (error) {
-    console.error('Error fetching estados:', error);
-    throw error;
-  }
+// ── Cache simple ───────────────────────────────────────────────────
+
+const cache = new Map<string, { data: any; ts: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
+function getCached<T>(key: string): T | null {
+  const entry = cache.get(key);
+  if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data as T;
+  cache.delete(key);
+  return null;
 }
 
-/**
- * Obtiene datos climáticos para un estado específico
- */
+function setCache(key: string, data: any) {
+  cache.set(key, { data, ts: Date.now() });
+}
+
+// ── Fetch con tipos ────────────────────────────────────────────────
+
+async function apiFetch<T>(path: string, cacheKey?: string): Promise<T> {
+  if (cacheKey) {
+    const cached = getCached<T>(cacheKey);
+    if (cached) return cached;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const result: ApiResponse<T> = await response.json();
+
+  if (cacheKey) setCache(cacheKey, result.data);
+  return result.data;
+}
+
+// ── Endpoints ──────────────────────────────────────────────────────
+
+export async function getEstados(): Promise<string[]> {
+  return apiFetch<string[]>('/api/estados', 'estados');
+}
+
 export async function getClimateData(
   estado: string,
-  options?: {
-    fecha?: string;
-    mes?: number;
-    anio?: number;
-    limit?: number;
-  }
+  options?: { fecha?: string; mes?: number; anio?: number; limit?: number }
 ): Promise<ClimateData[]> {
-  try {
-    const params = new URLSearchParams({ estado });
-    
-    if (options?.fecha) params.append('fecha', options.fecha);
-    if (options?.mes !== undefined) params.append('mes', options.mes.toString());
-    if (options?.anio) params.append('anio', options.anio.toString());
-    if (options?.limit) params.append('limit', options.limit.toString());
-    
-    const response = await fetch(`${API_BASE_URL}/api/clima?${params}`);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const result: ApiResponse<ClimateData[]> = await response.json();
-    return result.data.map((item) => ({
-      ...item,
-      temperatura: {
-        maxima: toNumber(item.temperatura?.maxima),
-        minima: toNumber(item.temperatura?.minima),
-        media: toNumber(item.temperatura?.media),
-      },
-      precipitacion: toNumber(item.precipitacion),
-      viento: {
-        maximo: toNumber(item.viento?.maximo),
-        medio: toNumber(item.viento?.medio),
-      },
-      humedad: {
-        maxima: toNumber(item.humedad?.maxima),
-        minima: toNumber(item.humedad?.minima),
-        media: toNumber(item.humedad?.media),
-      },
-    }));
-  } catch (error) {
-    console.error('Error fetching climate data:', error);
-    throw error;
-  }
+  const params = new URLSearchParams({ estado });
+  if (options?.fecha) params.append('fecha', options.fecha);
+  if (options?.mes !== undefined) params.append('mes', options.mes.toString());
+  if (options?.anio) params.append('anio', options.anio.toString());
+  if (options?.limit) params.append('limit', options.limit.toString());
+
+  const data = await apiFetch<ClimateData[]>(`/api/clima?${params}`);
+  return data.map(item => ({
+    ...item,
+    temperatura: {
+      maxima: toNumber(item.temperatura?.maxima),
+      minima: toNumber(item.temperatura?.minima),
+      media: toNumber(item.temperatura?.media),
+    },
+    precipitacion: toNumber(item.precipitacion),
+    viento: {
+      maximo: toNumber(item.viento?.maximo),
+      medio: toNumber(item.viento?.medio),
+    },
+    humedad: {
+      maxima: toNumber(item.humedad?.maxima),
+      minima: toNumber(item.humedad?.minima),
+      media: toNumber(item.humedad?.media),
+    },
+  }));
 }
 
-/**
- * Obtiene estadísticas climáticas agregadas para un estado
- */
 export async function getClimateStats(
   estado: string,
-  options?: {
-    anio?: number;
-    mes?: number;
-  }
+  options?: { anio?: number; mes?: number }
 ): Promise<ClimateStats> {
-  try {
-    const params = new URLSearchParams({ estado });
-    
-    if (options?.anio) params.append('anio', options.anio.toString());
-    if (options?.mes) params.append('mes', options.mes.toString());
-    
-    const url = `${API_BASE_URL}/api/clima/stats?${params}`;
-    console.log('🔍 Fetching climate stats from:', url);
-    
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ API Error:', response.status, errorText);
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const result: ApiResponse<ClimateStats> = await response.json();
-    console.log('✅ Climate stats received:', result);
+  const params = new URLSearchParams({ estado });
+  if (options?.anio) params.append('anio', options.anio.toString());
+  if (options?.mes) params.append('mes', options.mes.toString());
 
-    const data = result.data;
-    const normalized: ClimateStats = {
-      ...data,
-      total_registros: toNumber(data.total_registros),
-      temperatura: {
-        promedio: toNumber(data.temperatura?.promedio),
-        maxima: toNumber(data.temperatura?.maxima),
-        minima: toNumber(data.temperatura?.minima),
-      },
-      precipitacion: {
-        promedio: toNumber(data.precipitacion?.promedio),
-        total: toNumber(data.precipitacion?.total),
-      },
-  humedad_promedio: toNumber(data.humedad_promedio),
-  viento_promedio: toNumber(data.viento_promedio),
-    };
+  const key = `stats-${estado}-${options?.anio}-${options?.mes}`;
+  const data = await apiFetch<ClimateStats>(`/api/clima/stats?${params}`, key);
 
-    return normalized;
-  } catch (error) {
-    console.error('Error fetching climate stats:', error);
-    throw error;
-  }
+  return {
+    ...data,
+    total_registros: toNumber(data.total_registros),
+    temperatura: {
+      promedio: toNumber(data.temperatura?.promedio),
+      maxima: toNumber(data.temperatura?.maxima),
+      minima: toNumber(data.temperatura?.minima),
+    },
+    precipitacion: {
+      promedio: toNumber(data.precipitacion?.promedio),
+      total: toNumber(data.precipitacion?.total),
+    },
+    humedad_promedio: toNumber(data.humedad_promedio),
+    viento_promedio: toNumber(data.viento_promedio),
+  };
 }
 
 /**
- * Obtiene datos climáticos mensuales para un año completo
+ * Obtiene resumen mensual de un año completo EN UNA SOLA LLAMADA.
+ * Reemplaza las 12 llamadas individuales del endpoint anterior.
  */
 export async function getYearlyMonthlyData(
   estado: string,
   anio: number
-): Promise<Array<{
-  month: string;
-  monthNumber: number;
-  temperatura: number;
-  precipitacion: number;
-}>> {
-  try {
-    const monthlyData = [];
-    
-    // Obtener estadísticas para cada mes del año
-    for (let mes = 1; mes <= 12; mes++) {
-      const params = new URLSearchParams({
-        estado: estado,
-        anio: anio.toString(),
-        mes: mes.toString()
-      });
-      
-      const response = await fetch(`${API_BASE_URL}/api/clima/stats?${params}`);
-      
-      if (response.ok) {
-        const result: ApiResponse<ClimateStats> = await response.json();
-        const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-        
-        monthlyData.push({
-          month: monthNames[mes - 1],
-          monthNumber: mes,
-          temperatura: result.data.temperatura?.promedio ? parseFloat(result.data.temperatura.promedio.toFixed(1)) : 0,
-          precipitacion: result.data.precipitacion?.promedio ? parseFloat(result.data.precipitacion.promedio.toFixed(1)) : 0
-        });
-      }
-    }
-    
-    return monthlyData;
-  } catch (error) {
-    console.error('Error fetching yearly monthly data:', error);
-    throw error;
-  }
+): Promise<MonthlyData[]> {
+  const params = new URLSearchParams({ estado, anio: anio.toString() });
+  const key = `monthly-${estado}-${anio}`;
+  return apiFetch<MonthlyData[]>(`/api/clima/monthly?${params}`, key);
 }
 
 /**
- * Verifica que el backend esté disponible
+ * Obtiene métricas de TODOS los estados para colorear el mapa.
+ * Reemplaza las 32 llamadas individuales.
  */
+export async function getMapSummary(
+  anio?: number,
+  mes?: number
+): Promise<MapSummary> {
+  const params = new URLSearchParams();
+  if (anio) params.append('anio', anio.toString());
+  if (mes) params.append('mes', mes.toString());
+
+  const key = `map-${anio}-${mes}`;
+  return apiFetch<MapSummary>(`/api/clima/map-summary?${params}`, key);
+}
+
+/**
+ * Obtiene datos anuales para un rango de años (gráficas de tendencia).
+ */
+export async function getAnnualRange(
+  estado: string,
+  startYear: number,
+  endYear: number,
+): Promise<AnnualData[]> {
+  const params = new URLSearchParams({
+    estado,
+    start_year: startYear.toString(),
+    end_year: endYear.toString(),
+  });
+  const key = `annual-${estado}-${startYear}-${endYear}`;
+  return apiFetch<AnnualData[]>(`/api/clima/annual-range?${params}`, key);
+}
+
+/**
+ * Obtiene el estado de sincronización de datos.
+ */
+export async function getSyncStatus(): Promise<{
+  progress: SyncProgress;
+  states: Array<{
+    state: string;
+    last_synced_date: string | null;
+    status: string;
+    records_count: number;
+  }>;
+}> {
+  return apiFetch('/api/sync/status');
+}
+
+/**
+ * Dispara sincronización manual.
+ */
+export async function triggerSync(fromDate?: string): Promise<void> {
+  const url = fromDate
+    ? `${API_BASE_URL}/api/sync/trigger?from_date=${fromDate}`
+    : `${API_BASE_URL}/api/sync/trigger`;
+  const response = await fetch(url, { method: 'POST' });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+}
+
 export async function healthCheck(): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE_URL}/health`);
     return response.ok;
-  } catch (error) {
-    console.error('Backend health check failed:', error);
+  } catch {
     return false;
   }
 }
 
 /**
- * Calcula las predicciones y riesgos climáticos basados en datos históricos
+ * Predicciones calculadas con datos del backend.
  */
 export async function getClimatePredictions(
   estado: string,
@@ -266,85 +279,64 @@ export async function getClimatePredictions(
   droughtRisk: number;
   floodRisk: number;
   extremeWeatherRisk: number;
-  historicalAverage: {
-    temperature: number;
-    precipitation: number;
-  };
+  historicalAverage: { temperature: number; precipitation: number };
 }> {
   try {
-    // Obtener datos actuales
     const currentStats = await getClimateStats(estado, { anio, mes });
-    
-    // Obtener promedio histórico (últimos 5 años anteriores al año seleccionado)
+
+    // Promedio histórico: 5 años previos
     const historicalYears = Array.from({ length: 5 }, (_, i) => anio - 5 + i).filter(y => y < anio);
     const historicalData = await Promise.all(
-      historicalYears.map(year => 
-        getClimateStats(estado, { anio: year, mes }).catch(() => null)
-      )
+      historicalYears.map(y => getClimateStats(estado, { anio: y, mes }).catch(() => null))
     );
-    
-    // Filtrar datos válidos
-    const validHistoricalData = historicalData.filter(d => d !== null) as ClimateStats[];
-    
-    // Calcular promedios históricos
-    const historicalAvgTemp = validHistoricalData.length > 0
-      ? validHistoricalData.reduce((sum, d) => sum + d.temperatura.promedio, 0) / validHistoricalData.length
+
+    const valid = historicalData.filter(Boolean) as ClimateStats[];
+
+    const historicalAvgTemp = valid.length > 0
+      ? valid.reduce((s, d) => s + d.temperatura.promedio, 0) / valid.length
       : currentStats.temperatura.promedio;
-    
-    const historicalAvgPrecip = validHistoricalData.length > 0
-      ? validHistoricalData.reduce((sum, d) => sum + d.precipitacion.promedio, 0) / validHistoricalData.length
+
+    const historicalAvgPrecip = valid.length > 0
+      ? valid.reduce((s, d) => s + d.precipitacion.promedio, 0) / valid.length
       : currentStats.precipitacion.promedio;
-    
-    // Calcular cambios
+
     const temperatureChange = currentStats.temperatura.promedio - historicalAvgTemp;
-    const precipitationChange = historicalAvgPrecip > 0 
+    const precipitationChange = historicalAvgPrecip > 0
       ? ((currentStats.precipitacion.promedio - historicalAvgPrecip) / historicalAvgPrecip) * 100
       : 0;
-    
-    // Calcular riesgos
-    // Riesgo de sequía: basado en baja precipitación y alta temperatura
+
     const droughtRisk = Math.min(100, Math.max(0,
       (100 - (currentStats.precipitacion.promedio / Math.max(historicalAvgPrecip, 1)) * 100) * 0.6 +
       (temperatureChange > 0 ? temperatureChange * 10 : 0) * 0.4
     ));
-    
-    // Riesgo de inundaciones: basado en alta precipitación
+
     const floodRisk = Math.min(100, Math.max(0,
-      currentStats.precipitacion.promedio > historicalAvgPrecip * 1.5 
+      currentStats.precipitacion.promedio > historicalAvgPrecip * 1.5
         ? ((currentStats.precipitacion.promedio / historicalAvgPrecip) - 1) * 50
         : 20
     ));
-    
-    // Riesgo de eventos extremos: basado en variabilidad de temperatura
+
     const tempVariability = currentStats.temperatura.maxima - currentStats.temperatura.minima;
     const extremeWeatherRisk = Math.min(100, Math.max(0,
       (tempVariability / 20) * 50 + Math.abs(temperatureChange) * 15
     ));
-    
+
     return {
       temperatureChange,
       precipitationChange,
       droughtRisk,
       floodRisk,
       extremeWeatherRisk,
-      historicalAverage: {
-        temperature: historicalAvgTemp,
-        precipitation: historicalAvgPrecip,
-      },
+      historicalAverage: { temperature: historicalAvgTemp, precipitation: historicalAvgPrecip },
     };
-  } catch (error) {
-    console.error('Error calculating climate predictions:', error);
-    // Retornar valores por defecto en caso de error
+  } catch {
     return {
       temperatureChange: 0,
       precipitationChange: 0,
       droughtRisk: 50,
       floodRisk: 50,
       extremeWeatherRisk: 50,
-      historicalAverage: {
-        temperature: 25,
-        precipitation: 50,
-      },
+      historicalAverage: { temperature: 25, precipitation: 50 },
     };
   }
 }

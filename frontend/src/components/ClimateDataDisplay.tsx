@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Skeleton } from './ui/skeleton';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Thermometer, CloudRain, Wind, Droplets, Sun } from 'lucide-react';
-import { getClimateStats, getYearlyMonthlyData, getClimateData, type ClimateData } from '../services/api';
+import { getClimateStats, getYearlyMonthlyData, getClimateData, getAnnualRange, type ClimateData } from '../services/api';
 
 interface ClimateDataDisplayProps {
   selectedState: string | null;
@@ -70,26 +70,32 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
     fetchData();
   }, [selectedState, selectedYear, selectedMonth]);
 
-  // Trae y cachea promedios anuales por año
+  // Trae datos anuales en una sola llamada al backend
   const ensureAnnualData = async (years: number[]) => {
     if (!selectedState || !years.length) return;
     const missing = years.filter((y) => annualCache[y] === undefined);
     if (!missing.length) return;
     setAnnualLoading(true);
     try {
-      const results = await Promise.all(
-        missing.map(async (y) => {
-          try {
-            const stats = await getClimateStats(selectedState, { anio: y });
-            return [y, { temp: stats.temperatura?.promedio ?? null, precip: stats.precipitacion?.promedio ?? null }] as const;
-          } catch {
-            return [y, { temp: null, precip: null }] as const;
-          }
-        })
-      );
+      const startY = Math.min(...missing);
+      const endY = Math.max(...missing);
+      const annualData = await getAnnualRange(selectedState, startY, endY);
       setAnnualCache((prev) => {
         const next = { ...prev } as Record<number, { temp?: number | null; precip?: number | null }>;
-        for (const [y, vals] of results) next[y] = vals;
+        for (const d of annualData) {
+          next[d.year] = { temp: d.temperatura, precip: d.precipitacion };
+        }
+        // Mark years with no data as null so we don't re-fetch
+        for (const y of missing) {
+          if (next[y] === undefined) next[y] = { temp: null, precip: null };
+        }
+        return next;
+      });
+    } catch {
+      // Mark all as null on error
+      setAnnualCache((prev) => {
+        const next = { ...prev } as Record<number, { temp?: number | null; precip?: number | null }>;
+        for (const y of missing) next[y] = { temp: null, precip: null };
         return next;
       });
     } finally {
@@ -156,7 +162,7 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
           </div>
 
           {/* Indicadores principales (4 tarjetas) */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="p-5 rounded-2xl glass-card relative overflow-hidden">
                 <div className="relative z-10 flex flex-col items-center text-center space-y-3">
@@ -319,7 +325,7 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
       )}
 
       {/* Indicadores principales */}
-      <div className="p-6 rounded-3xl glass-card">
+      <div className="p-4 sm:p-6 rounded-3xl glass-card">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="font-medium text-gray-900 dark:text-white">{selectedState}</h3>
@@ -333,7 +339,7 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
           </Badge>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="p-5 rounded-2xl glass-card relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-red-500/20 to-orange-500/20" />
             <div className="relative z-10 flex flex-col items-center text-center space-y-2">
@@ -381,8 +387,8 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
       </div>
 
       {/* Gráfico de temperatura con vistas */}
-      <div className="p-6 rounded-3xl glass-card">
-        <div className="flex items-center justify-between mb-2">
+      <div className="p-4 sm:p-6 rounded-3xl glass-card">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
           <h4 className="font-medium text-gray-900 dark:text-white">
             {tempView === 'anual' ? (
               <>Temperatura promedio — {Math.min(tempAnnualRange.start, tempAnnualRange.end)}–{Math.max(tempAnnualRange.start, tempAnnualRange.end)}</>
@@ -390,8 +396,8 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
               <>Temperatura promedio — {selectedYear}</>
             )}
           </h4>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600 dark:text-gray-300">Vista:</span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-sm text-gray-600 dark:text-gray-300 hidden sm:inline">Vista:</span>
             <Button variant={tempView === 'semanal' ? 'default' : 'outline'} size="sm" onClick={() => setTempView('semanal')}>Semanal</Button>
             <Button variant={tempView === 'mensual' ? 'default' : 'outline'} size="sm" onClick={() => setTempView('mensual')}>Mensual</Button>
             <Button variant={tempView === 'anual' ? 'default' : 'outline'} size="sm" onClick={() => setTempView('anual')}>Anual</Button>
@@ -443,8 +449,8 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
           </div>
         )}
         {temperatureData.length > 0 ? (
-          <div className="bg-white/50 dark:bg-black/20 rounded-2xl p-4 backdrop-blur-sm">
-            <ResponsiveContainer width="100%" height={300}>
+          <div className="bg-white/50 dark:bg-black/20 rounded-2xl p-3 sm:p-4 backdrop-blur-sm">
+            <ResponsiveContainer width="100%" height={280} className="min-h-[220px] sm:min-h-[280px] lg:min-h-[320px]">
               <LineChart data={temperatureData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(156, 163, 175, 0.3)" />
                 <XAxis dataKey="label" stroke="currentColor" className="text-gray-600 dark:text-gray-300" />
@@ -479,8 +485,8 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
       </div>
 
       {/* Gráfico de precipitación con vistas */}
-      <div className="p-6 rounded-3xl glass-card">
-        <div className="flex items-center justify-between mb-2">
+      <div className="p-4 sm:p-6 rounded-3xl glass-card">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
           <h4 className="font-medium text-gray-900 dark:text-white">
             {precipView === 'anual' ? (
               <>Precipitación promedio — {Math.min(precipAnnualRange.start, precipAnnualRange.end)}–{Math.max(precipAnnualRange.start, precipAnnualRange.end)}</>
@@ -488,8 +494,8 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
               <>Precipitación promedio — {selectedYear}</>
             )}
           </h4>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600 dark:text-gray-300">Vista:</span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-sm text-gray-600 dark:text-gray-300 hidden sm:inline">Vista:</span>
             <Button variant={precipView === 'semanal' ? 'default' : 'outline'} size="sm" onClick={() => setPrecipView('semanal')}>Semanal</Button>
             <Button variant={precipView === 'mensual' ? 'default' : 'outline'} size="sm" onClick={() => setPrecipView('mensual')}>Mensual</Button>
             <Button variant={precipView === 'anual' ? 'default' : 'outline'} size="sm" onClick={() => setPrecipView('anual')}>Anual</Button>
@@ -541,8 +547,8 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
           </div>
         )}
         {precipitationData.length > 0 ? (
-          <div className="bg-white/50 dark:bg-black/20 rounded-2xl p-4 backdrop-blur-sm">
-            <ResponsiveContainer width="100%" height={300}>
+          <div className="bg-white/50 dark:bg-black/20 rounded-2xl p-3 sm:p-4 backdrop-blur-sm">
+            <ResponsiveContainer width="100%" height={280} className="min-h-[220px] sm:min-h-[280px] lg:min-h-[320px]">
               <BarChart data={precipitationData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(156, 163, 175, 0.3)" />
                 <XAxis dataKey="label" stroke="currentColor" className="text-gray-600 dark:text-gray-300" />

@@ -66,15 +66,11 @@ export function WeatherWidget({ selectedState }: WeatherWidgetProps) {
       try {
         setLoading(true);
         setError(null);
-        console.log(`🌤️ Fetching weather for ${selectedState}...`, coordinates);
         
         const data = await getWeatherData(coordinates.lat, coordinates.lng);
         setCurrentWeather(data.current);
         setForecast(data.forecast);
-        
-        console.log('✅ Weather data loaded:', data);
       } catch (err) {
-        console.error('❌ Error loading weather:', err);
         setError('Error al cargar datos del clima');
       } finally {
         setLoading(false);

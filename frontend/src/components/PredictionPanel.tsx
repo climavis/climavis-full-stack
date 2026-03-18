@@ -33,14 +33,10 @@ export function PredictionPanel({ selectedState, selectedYear, selectedMonth }: 
       try {
         setLoading(true);
         setError(null);
-        console.log(`📊 Calculating predictions for ${selectedState}...`);
         
         const data = await getClimatePredictions(selectedState, selectedYear, selectedMonth + 1);
         setPredictions(data);
-        
-        console.log('✅ Predictions calculated:', data);
       } catch (err) {
-        console.error('❌ Error loading predictions:', err);
         setError('Error al cargar predicciones');
       } finally {
         setLoading(false);

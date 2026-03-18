@@ -1,3 +1,2 @@
-"""
-Modelos de datos para la base de datos
-"""
+"""Modelos de datos climáticos."""
+from .clima import ClimateRecord, SyncStatus  # noqa: F401

@@ -19,7 +19,7 @@ const months = [
 export function TimeControls({ selectedYear, selectedMonth, onYearChange, onMonthChange }: TimeControlsProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const currentYear = new Date().getFullYear();
-  const minYear = 2000;
+  const minYear = 2000; // Datos históricos importados desde 2000
   const maxYear = 2030; // Incluye años futuros para predicciones
 
   useEffect(() => {

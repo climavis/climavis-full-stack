@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON } from 'react-leaflet';
 import { Button } from './ui/button';
 import { Maximize2, Minimize2 } from 'lucide-react';
-import { getClimateStats } from '../services/api';
+import { getMapSummary, type MapSummary } from '../services/api';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import mexicoGeoJSON from '../data/mexicoStates.json';
@@ -60,9 +60,6 @@ const stateCoordinates: Record<string, { lat: number; lng: number; name: string 
   'ZACATECAS': { lat: 22.7709, lng: -102.5832, name: 'Zacatecas' },
 };
 
-// Lista de todos los estados para cargar datos
-const allStates = Object.keys(stateCoordinates);
-
 interface StateClimateData {
   estado: string;
   temperatura: number;
@@ -80,14 +77,10 @@ export function MapView({ selectedState, selectedYear, selectedMonth, onStateSel
   const [loading, setLoading] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const toggleFullscreen = () => {
-    console.log('Toggle fullscreen clicked, current state:', isFullscreen);
-    setIsFullscreen(!isFullscreen);
-  };
+  const toggleFullscreen = () => setIsFullscreen(!isFullscreen);
 
-  // Debug para fullscreen
+  // Fullscreen: bloquear scroll y cerrar con ESC
   useEffect(() => {
-    console.log('Fullscreen state changed to:', isFullscreen);
     // Bloquear scroll del documento cuando está en fullscreen
     try {
       const html = document.documentElement;
@@ -120,101 +113,35 @@ export function MapView({ selectedState, selectedYear, selectedMonth, onStateSel
     };
   }, [isFullscreen]);
 
-  // Cargar datos de todos los estados cuando cambien año/mes o vista
+  // Cargar datos de todos los estados con UNA SOLA llamada al backend
   useEffect(() => {
     const fetchAllStatesData = async () => {
-      console.debug('[MapView] Starting to load states data...');
       setLoading(true);
       try {
-        const dataPromises = allStates.map(async (estado) => {
-          try {
-            const stats = await getClimateStats(estado, {
-              anio: selectedYear,
-              mes: selectedMonth + 1
-            });
-            
-            return {
-              estado,
-              temperatura: stats.temperatura?.promedio || 0,
-              precipitacion: stats.precipitacion?.promedio || 0,
-              viento: stats.viento_promedio || 0,
-              humedad: stats.humedad_promedio || 0,
-              lat: stateCoordinates[estado].lat,
-              lng: stateCoordinates[estado].lng,
-            };
-          } catch (err) {
-            console.error(`Error loading data for ${estado}:`, err);
-            return {
-              estado,
-              temperatura: 0,
-              precipitacion: 0,
-              viento: 0,
-              humedad: 0,
-              lat: stateCoordinates[estado].lat,
-              lng: stateCoordinates[estado].lng,
-            };
-          }
-        });
+        const summary: MapSummary = await getMapSummary(selectedYear, selectedMonth + 1);
 
-        const data = await Promise.all(dataPromises);
+        const data: StateClimateData[] = Object.entries(summary)
+          .filter(([estado]) => stateCoordinates[estado])
+          .map(([estado, values]) => ({
+            estado,
+            temperatura: values.temperatura ?? 0,
+            precipitacion: values.precipitacion ?? 0,
+            viento: values.viento ?? 0,
+            humedad: values.humedad ?? 0,
+            lat: stateCoordinates[estado].lat,
+            lng: stateCoordinates[estado].lng,
+          }));
+
         setClimateData(data.filter(d => d.temperatura > 0 || d.precipitacion > 0));
       } catch (error) {
-        console.error('Error fetching climate data:', error);
+        console.error('Error fetching map summary:', error);
       } finally {
-        console.debug('[MapView] Finished loading states data');
         setLoading(false);
       }
     };
 
     fetchAllStatesData();
   }, [selectedYear, selectedMonth]);
-
-  // Función para obtener color según el valor y tipo de dato
-  const getColor = (value: number, type: MapViewType): string => {
-    switch (type) {
-      case 'temperatura':
-        if (value < 15) return '#2563eb'; // Azul - Frío
-        if (value < 25) return '#16a34a'; // Verde - Templado
-        if (value < 35) return '#ca8a04'; // Amarillo - Cálido
-        return '#dc2626'; // Rojo - Muy cálido
-      
-      case 'precipitacion':
-        if (value < 50) return '#fef08a'; // Amarillo claro - Bajo
-        if (value < 150) return '#60a5fa'; // Azul claro - Medio
-        if (value < 300) return '#3b82f6'; // Azul - Alto
-        return '#1e40af'; // Azul oscuro - Muy alto
-      
-      case 'viento':
-        if (value < 10) return '#16a34a'; // Verde - Calma
-        if (value < 30) return '#ca8a04'; // Amarillo - Brisa
-        if (value < 60) return '#ea580c'; // Naranja - Viento
-        return '#dc2626'; // Rojo - Fuerte
-      
-      case 'topografia':
-        // Topografía basada en altitud estimada (simplificado)
-        return '#16a34a'; // Verde por defecto
-      
-      default:
-        return '#3b82f6';
-    }
-  };
-
-  // Función para obtener el radio del círculo según intensidad
-  const getRadius = (value: number, type: MapViewType): number => {
-    switch (type) {
-      case 'temperatura':
-        return 50000 + (value * 1000); // Base 50km + proporcional a temperatura
-      
-      case 'precipitacion':
-        return 50000 + (value * 200); // Base 50km + proporcional a precipitación
-      
-      case 'viento':
-        return 50000 + (value * 1500); // Base 50km + proporcional a viento
-      
-      default:
-        return 60000;
-    }
-  };
 
   // Obtener valor según tipo de vista
   const getValue = (data: StateClimateData, type: MapViewType): number => {
@@ -233,25 +160,33 @@ export function MapView({ selectedState, selectedYear, selectedMonth, onStateSel
   };
 
   // Componente para renderizar los estados de México con GeoJSON
+  // Alias: el GeoJSON usa "México" para Estado de México
+  const GEO_NAME_ALIASES: Record<string, string> = {
+    'MEXICO': 'ESTADO DE MEXICO',
+  };
+
+  const normalizeStateName = (name: string): string => {
+    const n = name.toUpperCase()
+      .replace(/Á/g, 'A')
+      .replace(/É/g, 'E')
+      .replace(/Í/g, 'I')
+      .replace(/Ó/g, 'O')
+      .replace(/Ú/g, 'U')
+      .replace(/Ñ/g, 'N');
+    return GEO_NAME_ALIASES[n] || n;
+  };
+
+  const findStateData = (data: StateClimateData[], stateName: string): StateClimateData | undefined => {
+    const normalizedGeo = normalizeStateName(stateName);
+    return data.find(d => {
+      const normalizedDb = normalizeStateName(d.estado);
+      return normalizedDb === normalizedGeo;
+    });
+  };
+
   const StateGeoJSON = ({ data, activeView, onStateSelect }: { data: StateClimateData[], activeView: MapViewType, onStateSelect?: (state: string | null) => void }) => {
     const getColor = (stateName: string): string => {
-      // Encontrar datos del estado
-      const stateData = data.find(d => {
-        // Normalizar nombres para coincidir
-        const normalizedDbName = d.estado.toUpperCase()
-          .replace(/Á/g, 'A')
-          .replace(/É/g, 'E')
-          .replace(/Í/g, 'I')
-          .replace(/Ó/g, 'O')
-          .replace(/Ú/g, 'U');
-        const normalizedGeoName = stateName.toUpperCase()
-          .replace(/Á/g, 'A')
-          .replace(/É/g, 'E')
-          .replace(/Í/g, 'I')
-          .replace(/Ó/g, 'O')
-          .replace(/Ú/g, 'U');
-        return normalizedDbName === normalizedGeoName;
-      });
+      const stateData = findStateData(data, stateName);
 
       if (!stateData) return '#e5e7eb'; // Gris claro si no hay datos
       
@@ -291,21 +226,7 @@ export function MapView({ selectedState, selectedYear, selectedMonth, onStateSel
     const onEachFeature = (feature: any, layer: any) => {
       if (feature.properties && feature.properties.name) {
         const stateName = feature.properties.name;
-        const stateData = data.find(d => {
-          const normalizedDbName = d.estado.toUpperCase()
-            .replace(/Á/g, 'A')
-            .replace(/É/g, 'E')
-            .replace(/Í/g, 'I')
-            .replace(/Ó/g, 'O')
-            .replace(/Ú/g, 'U');
-          const normalizedGeoName = stateName.toUpperCase()
-            .replace(/Á/g, 'A')
-            .replace(/É/g, 'E')
-            .replace(/Í/g, 'I')
-            .replace(/Ó/g, 'O')
-            .replace(/Ú/g, 'U');
-          return normalizedDbName === normalizedGeoName;
-        });
+        const stateData = findStateData(data, stateName);
 
         // Agregar handler de click para seleccionar estado
         layer.on('click', () => {
@@ -348,7 +269,7 @@ export function MapView({ selectedState, selectedYear, selectedMonth, onStateSel
       };
     };
 
-    return <GeoJSON data={mexicoGeoJSON as any} style={style} onEachFeature={onEachFeature} />;
+    return <GeoJSON key={`geo-${activeView}-${selectedYear}-${selectedMonth}`} data={mexicoGeoJSON as any} style={style} onEachFeature={onEachFeature} />;
   };
 
   const mapViews = [
@@ -375,19 +296,19 @@ export function MapView({ selectedState, selectedYear, selectedMonth, onStateSel
       )}
 
       <div className={`
-        ${isFullscreen ? 'fixed inset-0 z-[9999] bg-white dark:bg-gray-900 overflow-hidden p-0 rounded-none' : 'p-6 rounded-3xl glass-card relative overflow-hidden'}
+        ${isFullscreen ? 'fixed inset-0 z-[9999] bg-white dark:bg-gray-900 overflow-hidden p-0 rounded-none' : 'p-4 sm:p-6 rounded-3xl glass-card relative overflow-hidden'}
         transition-all duration-500 ease-in-out
       `}>
   <div className="bg-gradient-to-br from-blue-500/10 via-cyan-500/10 to-teal-500/10 absolute inset-0" />
       
       <div className="relative z-10">
         {/* Header */}
-        <div className="mb-4 sm:mb-6 flex items-start justify-between gap-3 px-4 sm:px-0">
+        <div className="mb-3 sm:mb-4 flex items-start justify-between gap-3">
           <div>
-            <h3 className="font-medium text-gray-900 dark:text-white mb-2">
+            <h3 className="font-medium text-gray-900 dark:text-white mb-1">
               Vista de Mapa
             </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">
               Explora diferentes capas de información climática
             </p>
           </div>
@@ -414,7 +335,7 @@ export function MapView({ selectedState, selectedYear, selectedMonth, onStateSel
         </div>
 
         {/* Map View Selector */}
-        <div className="flex flex-wrap gap-2 mb-4 px-4 sm:px-0">
+        <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-3 sm:mb-4">
           {mapViews.map((view) => (
             <Button
               key={view.id}
@@ -435,7 +356,7 @@ export function MapView({ selectedState, selectedYear, selectedMonth, onStateSel
         </div>
 
         {/* Divider */}
-        <div className="flex items-center gap-4 mb-4 px-4 sm:px-0">
+        <div className="flex items-center gap-4 mb-3 sm:mb-4">
           <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
             Mapas CENAPRED
           </span>
@@ -443,7 +364,7 @@ export function MapView({ selectedState, selectedYear, selectedMonth, onStateSel
         </div>
 
         {/* CENAPRED Maps Selector */}
-        <div className={`flex flex-wrap gap-2 ${isFullscreen ? 'mb-2' : 'mb-6'} px-4 sm:px-0`}>
+        <div className={`flex flex-wrap gap-1.5 sm:gap-2 ${isFullscreen ? 'mb-2' : 'mb-4 sm:mb-6'}`}>
           {cenapredMapViews.map((view) => (
             <Button
               key={view.id}
