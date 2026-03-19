@@ -1,41 +1,77 @@
 """
-Modelo de datos climáticos usando SQLAlchemy
+Modelos ORM para datos climáticos – PostgreSQL.
 """
 
-from sqlalchemy import Column, Integer, String, Float, Date
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import (
+    Column, Integer, String, Float, Date, DateTime,
+    UniqueConstraint, Index,
+)
+from sqlalchemy.sql import func
 
-Base = declarative_base()
+from ..database import Base
 
 
-class DatoClimatico(Base):
-    """Modelo para datos climáticos históricos"""
-    __tablename__ = "datos_climaticos"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    estado = Column(String, index=True, nullable=False)
-    fecha = Column(Date, nullable=False)
-    temperatura_max = Column(Float)
-    temperatura_min = Column(Float)
-    temperatura_promedio = Column(Float)
-    precipitacion = Column(Float)
-    humedad = Column(Float)
-    
+class ClimateRecord(Base):
+    """Registro diario de clima por estado."""
+
+    __tablename__ = "climate_data"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    state = Column(String(60), nullable=False)
+    date = Column(Date, nullable=False)
+
+    # Temperatura (°C)
+    temp_max = Column(Float)
+    temp_min = Column(Float)
+    temp_mean = Column(Float)
+
+    # Precipitación (mm)
+    precipitation = Column(Float)
+
+    # Viento (km/h)
+    wind_max = Column(Float)
+    wind_gusts = Column(Float)
+    wind_direction = Column(Float)  # grados dominantes
+
+    # Humedad relativa (%)
+    humidity_max = Column(Float)
+    humidity_min = Column(Float)
+    humidity_mean = Column(Float)
+
+    # Radiación solar (MJ/m²)
+    radiation = Column(Float)
+
+    # Meta
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("state", "date", name="uq_state_date"),
+        Index("ix_climate_state", "state"),
+        Index("ix_climate_date", "date"),
+        Index("ix_climate_state_date", "state", "date"),
+    )
+
     def __repr__(self):
-        return f"<DatoClimatico(estado='{self.estado}', fecha='{self.fecha}')>"
+        return f"<ClimateRecord(state='{self.state}', date='{self.date}')>"
 
 
-class Prediccion(Base):
-    """Modelo para predicciones climáticas"""
-    __tablename__ = "predicciones"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    estado = Column(String, index=True, nullable=False)
-    anio = Column(Integer, nullable=False)
-    mes = Column(Integer, nullable=False)
-    temperatura_predicha = Column(Float)
-    precipitacion_predicha = Column(Float)
-    confianza = Column(Float)  # Nivel de confianza de la predicción (0-1)
-    
+class SyncStatus(Base):
+    """Lleva registro del estado de sincronización por estado."""
+
+    __tablename__ = "sync_status"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    state = Column(String(60), nullable=False, unique=True)
+    last_synced_date = Column(Date)
+    last_sync_at = Column(DateTime(timezone=True))
+    records_count = Column(Integer, default=0)
+    status = Column(String(20), default="pending")  # pending | syncing | ok | error
+    error_message = Column(String(500))
+
+    __table_args__ = (Index("ix_sync_state", "state"),)
+
     def __repr__(self):
-        return f"<Prediccion(estado='{self.estado}', anio={self.anio}, mes={self.mes})>"
+        return f"<SyncStatus(state='{self.state}', last='{self.last_synced_date}')>"

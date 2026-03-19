@@ -1,6 +1,17 @@
 // Servicio para Open-Meteo API (sin límite de llamadas, sin API key)
 const OPEN_METEO_BASE_URL = 'https://api.open-meteo.com/v1';
 
+// ── Cache de weather con TTL de 10 minutos ────────────────────────
+const _weatherCache = new Map<string, { data: any; ts: number }>();
+const WEATHER_CACHE_TTL = 10 * 60 * 1000; // 10 minutos
+
+function _getCachedWeather<T>(key: string): T | null {
+  const entry = _weatherCache.get(key);
+  if (entry && Date.now() - entry.ts < WEATHER_CACHE_TTL) return entry.data as T;
+  _weatherCache.delete(key);
+  return null;
+}
+
 interface OpenMeteoCurrentWeather {
   time: string;
   temperature_2m: number;
@@ -98,10 +109,13 @@ function getDayName(dateString: string): string {
 }
 
 export async function getWeatherData(lat: number, lng: number): Promise<WeatherData> {
+  // Redondear coords para agrupar cache (2 decimales = ~1km precisión)
+  const cacheKey = `weather-${lat.toFixed(2)}-${lng.toFixed(2)}`;
+  const cached = _getCachedWeather<WeatherData>(cacheKey);
+  if (cached) return cached;
+
   try {
     const url = `${OPEN_METEO_BASE_URL}/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=7`;
-    
-    console.log('🌤️ Fetching weather from Open-Meteo:', url);
     
     const response = await fetch(url);
     
@@ -110,7 +124,6 @@ export async function getWeatherData(lat: number, lng: number): Promise<WeatherD
     }
     
     const data: OpenMeteoResponse = await response.json();
-    console.log('✅ Weather data received:', data);
     
     // Procesar datos actuales
     const weatherInfo = getWeatherInfo(data.current.weather_code, data.current.is_day);
@@ -146,9 +159,11 @@ export async function getWeatherData(lat: number, lng: number): Promise<WeatherD
       });
     }
     
-    return { current, forecast };
+    const result: WeatherData = { current, forecast };
+    _weatherCache.set(cacheKey, { data: result, ts: Date.now() });
+    return result;
   } catch (error) {
-    console.error('❌ Error fetching weather data:', error);
+    console.error('Error fetching weather data:', error);
     throw error;
   }
 }

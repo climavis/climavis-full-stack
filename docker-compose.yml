@@ -1,11 +1,49 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: climavis-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-climavis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-climavis_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-climavis}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-climavis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    # ── Límites de recursos para PostgreSQL ─────────────────────
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+    # Tuning PostgreSQL para bajo consumo de RAM
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=64MB"
+      - "-c"
+      - "work_mem=4MB"
+      - "-c"
+      - "maintenance_work_mem=32MB"
+      - "-c"
+      - "effective_cache_size=256MB"
+      - "-c"
+      - "max_connections=20"
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
       args:
         - NODE_MAJOR=18
-    container_name: climate-dashboard
+    container_name: climavis-app
     working_dir: /app
     command: ["python", "start.py"]
     ports:
@@ -14,12 +52,31 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
-      - CHOKIDAR_USEPOLLING=true
-      - WATCHPACK_POLLING=true
+      - DOCKER=1
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-climavis}:${POSTGRES_PASSWORD:-climavis_secret}@db:5432/${POSTGRES_DB:-climavis}
+      - SYNC_ON_STARTUP=${SYNC_ON_STARTUP:-true}
+      - DAILY_SYNC_HOUR=${DAILY_SYNC_HOUR:-6}
+      - BULK_THRESHOLD_DAYS=${BULK_THRESHOLD_DAYS:-50}
+      - HISTORY_START_DATE=${HISTORY_START_DATE:-2020-01-01}
+      - TOR_SOCKS_PORT=${TOR_SOCKS_PORT:-9050}
+      - TOR_ROTATE_EVERY=${TOR_ROTATE_EVERY:-2}
+      # ── Límites de memoria para Node.js (Vite) ──────────────
+      - NODE_OPTIONS=--max-old-space-size=384
     volumes:
       - ./:/app
       - node_modules:/app/frontend/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
+    # ── Límites de recursos para la app ────────────────────────
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
 
 volumes:
   node_modules:
+  pgdata:

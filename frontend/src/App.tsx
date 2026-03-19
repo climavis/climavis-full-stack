@@ -18,11 +18,6 @@ export default function App() {
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  
-  // Debug log when state changes
-  useEffect(() => {
-    console.debug('[App] Selected state changed:', selectedState);
-  }, [selectedState]);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [currentView, setCurrentView] = useState<'main' | 'yucatan'>('main');
   const [isHeaderCompact, setIsHeaderCompact] = useState(false);
@@ -84,7 +79,7 @@ export default function App() {
                   <h1 className={`font-medium text-gray-900 dark:text-white ${isHeaderCompact ? 'text-base' : 'text-lg'}`}>climavis</h1>
                   <span className={`alpha-badge ${isHeaderCompact ? 'text-[10px]' : 'text-xs'}`}>alpha</span>
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-300">Visualización y Predicción del Cambio Climático</p>
+                <p className="text-sm text-gray-600 dark:text-gray-300 hidden sm:block">Visualización y Predicción del Cambio Climático</p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
@@ -107,7 +102,7 @@ export default function App() {
       <NewsTicker />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Main Map View */}
+        {/* Mapa — ancho completo */}
         <div className="mb-8">
           <MapView 
             selectedState={selectedState} 
@@ -163,7 +158,7 @@ export default function App() {
       <footer className="mt-12 pb-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center text-sm text-gray-600 dark:text-gray-400">
-            De <span className="font-bold">Yucatán</span>, para <span className="font-bold">México</span> 🫶
+            De <span className="font-bold">Yucatán</span>, para <span className="font-bold">México</span>
           </div>
         </div>
       </footer>

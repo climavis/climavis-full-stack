@@ -2,7 +2,7 @@
 
 FROM node:18-bullseye
 
-# Install Python and build tools
+# Install Python, build tools, and Tor (for IP rotation on Open-Meteo sync)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        python3 \
@@ -12,6 +12,7 @@ RUN apt-get update \
        git \
        ca-certificates \
        curl \
+       tor \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

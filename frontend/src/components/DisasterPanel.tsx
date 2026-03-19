@@ -10,7 +10,6 @@ import {
   AlertTriangle, 
   Waves, 
   Droplets,
-  Thermometer,
   Eye
 } from 'lucide-react';
 
