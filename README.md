@@ -327,6 +327,30 @@ Aggregated climate statistics per state. Query parameters:
 
 Refer to `backend/app/main.py` for the definitive list of routes and request/response shapes.
 
+### GET `/api/clima/export`
+Downloads climate datasets with filters and multiple formats.
+
+Query params:
+
+- `formato`: `csv`, `json`, `txt`, `xlsx`
+- `estado` (optional)
+- `anio` (optional)
+- `mes` (optional)
+- `meses` (optional, comma separated, e.g. `6,7,8`)
+- `fecha_inicio` and `fecha_fin` (optional, `YYYY-MM-DD`)
+- `resumen` (optional, `true|false`) to export average summary tables
+- `agrupar_por` (optional for summary): `none`, `state`, `year`, `month`
+
+Examples:
+
+```bash
+# Raw dataset for Yucatán, June 2024, in JSON
+curl -OJ "http://localhost:8000/api/clima/export?formato=json&estado=YUCATAN&anio=2024&mes=6"
+
+# Summary table grouped by month for selected months
+curl -OJ "http://localhost:8000/api/clima/export?formato=csv&resumen=true&agrupar_por=month&anio=2024&meses=6,7,8"
+```
+
 ## Configuration
 
 Environment variables and configuration are documented in `backend/.env.example`. Notable settings:

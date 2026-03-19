@@ -5,6 +5,7 @@ import { ClimateDataDisplay } from './components/ClimateDataDisplay';
 import { PredictionPanel } from './components/PredictionPanel';
 import { ThemeToggle } from './components/ThemeToggle';
 import { WeatherWidget } from './components/WeatherWidget';
+import { DatasetDownloadPanel } from './components/DatasetDownloadPanel';
 import { MapView } from './components/MapView';
 import NewsTicker from './components/NewsTicker';
 import { Button } from './components/ui/button';
@@ -153,6 +154,12 @@ export default function App() {
               selectedMonth={selectedMonth}
               onYearChange={setSelectedYear}
               onMonthChange={setSelectedMonth}
+            />
+
+            <DatasetDownloadPanel
+              selectedState={selectedState}
+              selectedYear={selectedYear}
+              selectedMonth={selectedMonth}
             />
 
             <WeatherWidget selectedState={selectedState} />

@@ -16,19 +16,39 @@ const months = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ];
 
+const shortMonths = [
+  'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+  'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+];
+
 export function TimeControls({ selectedYear, selectedMonth, onYearChange, onMonthChange }: TimeControlsProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
   const minYear = 2000; // Datos históricos importados desde 2000
-  const maxYear = 2030; // Incluye años futuros para predicciones
+  const maxYear = currentYear;
+  const maxMonthForSelectedYear = selectedYear === currentYear ? currentMonth : 11;
+  const middleMonthForSelectedYear = Math.floor(maxMonthForSelectedYear / 2);
+
+  useEffect(() => {
+    // Si cambia el límite (nuevo mes/año), ajusta selección fuera de rango.
+    if (selectedYear > maxYear) {
+      onYearChange(maxYear);
+      onMonthChange(currentMonth);
+      return;
+    }
+    if (selectedMonth > maxMonthForSelectedYear) {
+      onMonthChange(maxMonthForSelectedYear);
+    }
+  }, [selectedYear, selectedMonth, maxYear, currentMonth, maxMonthForSelectedYear, onYearChange, onMonthChange]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
     
     if (isPlaying) {
       interval = setInterval(() => {
-        onMonthChange(selectedMonth === 11 ? 0 : selectedMonth + 1);
-        if (selectedMonth === 11) {
+        onMonthChange(selectedMonth === maxMonthForSelectedYear ? 0 : selectedMonth + 1);
+        if (selectedMonth === maxMonthForSelectedYear) {
           if (selectedYear < maxYear) {
             onYearChange(selectedYear + 1);
           } else {
@@ -62,7 +82,7 @@ export function TimeControls({ selectedYear, selectedMonth, onYearChange, onMont
         onYearChange(selectedYear + 1);
         onMonthChange(0);
       }
-    } else {
+    } else if (selectedMonth < maxMonthForSelectedYear) {
       onMonthChange(selectedMonth + 1);
     }
   };
@@ -73,7 +93,7 @@ export function TimeControls({ selectedYear, selectedMonth, onYearChange, onMont
         <div>
           <h3 className="font-medium mb-2 text-gray-900 dark:text-white">Controles Temporales</h3>
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            Explora datos históricos y predicciones climáticas
+            Explora datos históricos hasta la fecha actual
           </p>
         </div>
 
@@ -82,7 +102,7 @@ export function TimeControls({ selectedYear, selectedMonth, onYearChange, onMont
           <div className="flex justify-between items-center">
             <Label className="text-gray-900 dark:text-white">Año: {selectedYear}</Label>
             <div className="px-3 py-1 rounded-full glass-button border-0 text-xs">
-              {selectedYear > currentYear ? 'Predicción' : 'Histórico'}
+              {selectedYear === currentYear ? 'Año en curso' : 'Histórico'}
             </div>
           </div>
           <Slider
@@ -107,14 +127,14 @@ export function TimeControls({ selectedYear, selectedMonth, onYearChange, onMont
             value={[selectedMonth]}
             onValueChange={(values: number[]) => onMonthChange(values[0])}
             min={0}
-            max={11}
+            max={maxMonthForSelectedYear}
             step={1}
             className="w-full"
           />
           <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
-            <span>Ene</span>
-            <span>Jun</span>
-            <span>Dic</span>
+            <span>{shortMonths[0]}</span>
+            <span>{shortMonths[middleMonthForSelectedYear]}</span>
+            <span>{shortMonths[maxMonthForSelectedYear]}</span>
           </div>
         </div>
 

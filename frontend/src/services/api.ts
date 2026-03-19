@@ -88,6 +88,21 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
+export type DatasetFormat = 'csv' | 'json' | 'txt' | 'xlsx';
+export type DatasetGroupBy = 'none' | 'state' | 'year' | 'month';
+
+export interface DatasetExportOptions {
+  format: DatasetFormat;
+  state?: string;
+  year?: number;
+  month?: number;
+  months?: number[];
+  startDate?: string;
+  endDate?: string;
+  summary?: boolean;
+  groupBy?: DatasetGroupBy;
+}
+
 // ── Cache simple ───────────────────────────────────────────────────
 
 const cache = new Map<string, { data: any; ts: number }>();
@@ -264,6 +279,27 @@ export async function healthCheck(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export function buildClimateExportUrl(options: DatasetExportOptions): string {
+  const params = new URLSearchParams();
+  params.set('formato', options.format);
+
+  if (options.state && options.state !== 'ALL') params.set('estado', options.state);
+  if (options.year) params.set('anio', String(options.year));
+  if (options.month) params.set('mes', String(options.month));
+  if (options.months && options.months.length) params.set('meses', options.months.join(','));
+  if (options.startDate) params.set('fecha_inicio', options.startDate);
+  if (options.endDate) params.set('fecha_fin', options.endDate);
+  if (options.summary) params.set('resumen', 'true');
+  if (options.groupBy) params.set('agrupar_por', options.groupBy);
+
+  return `${API_BASE_URL}/api/clima/export?${params.toString()}`;
+}
+
+export function downloadClimateDataset(options: DatasetExportOptions) {
+  const url = buildClimateExportUrl(options);
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 /**

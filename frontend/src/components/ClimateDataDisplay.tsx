@@ -414,7 +414,7 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
                 <input
                   type="range"
                   min={2000}
-                  max={2030}
+                  max={currentYear}
                   step={1}
                   value={Math.min(tempAnnualRange.start, tempAnnualRange.end)}
                   onChange={(e) => {
@@ -432,7 +432,7 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
                 <input
                   type="range"
                   min={2000}
-                  max={2030}
+                  max={currentYear}
                   step={1}
                   value={Math.max(tempAnnualRange.start, tempAnnualRange.end)}
                   onChange={(e) => {
@@ -512,7 +512,7 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
                 <input
                   type="range"
                   min={2000}
-                  max={2030}
+                  max={currentYear}
                   step={1}
                   value={Math.min(precipAnnualRange.start, precipAnnualRange.end)}
                   onChange={(e) => {
@@ -530,7 +530,7 @@ export function ClimateDataDisplay({ selectedState, selectedYear, selectedMonth 
                 <input
                   type="range"
                   min={2000}
-                  max={2030}
+                  max={currentYear}
                   step={1}
                   value={Math.max(precipAnnualRange.start, precipAnnualRange.end)}
                   onChange={(e) => {
