@@ -10,6 +10,7 @@ import NewsTicker from './components/NewsTicker';
 import { Button } from './components/ui/button';
 import { Github } from 'lucide-react';
 import ErrorBoundary from './components/ErrorBoundary';
+import { getSyncStatus } from './services/api';
 
 // Lazy load AppYucatan para reducir el bundle inicial
 const AppYucatan = lazy(() => import('./AppYucatan'));
@@ -22,6 +23,31 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'main' | 'yucatan'>('main');
   const [isHeaderCompact, setIsHeaderCompact] = useState(false);
   const [isHeaderHidden, setIsHeaderHidden] = useState(false);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const checkSync = async () => {
+      try {
+        const status = await getSyncStatus();
+        const isGlobalSync = status.progress.status === 'running';
+        const anyStateSyncing = status.states?.some((s) => s.status === 'syncing') ?? false;
+        if (mounted) {
+          setMaintenanceMode(isGlobalSync || anyStateSyncing);
+        }
+      } catch {
+        if (mounted) setMaintenanceMode(false);
+      }
+    };
+
+    checkSync();
+    const interval = window.setInterval(checkSync, 5000);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   // Contraer/ocultar header al desplazarse y mostrarlo al hacer scroll hacia arriba
   useEffect(() => {
@@ -61,6 +87,8 @@ export default function App() {
     <div className="min-h-screen relative overflow-hidden">
       {/* Animated background gradient */}
       <div className="fixed inset-0 -z-10" />
+      
+      <div className={maintenanceMode ? 'blur-sm pointer-events-none select-none' : ''}>
       
       {/* Header */}
       <header className={`glass-header sticky top-0 z-50 backdrop-blur-lg transition-all duration-300 ease-out will-change-transform ${isHeaderHidden ? '-translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}>
@@ -162,6 +190,17 @@ export default function App() {
           </div>
         </div>
       </footer>
+      </div>
+
+      {maintenanceMode && (
+        <div className="fixed inset-0 z-[100] bg-black/35 backdrop-blur-[2px] flex items-center justify-center px-4">
+          <div className="rounded-2xl bg-white/90 dark:bg-slate-900/90 border border-white/30 dark:border-white/10 shadow-xl px-6 py-5 text-center max-w-sm w-full">
+            <div className="mx-auto mb-3 h-9 w-9 rounded-full border-4 border-slate-300 border-t-blue-500 animate-spin" />
+            <p className="text-base font-medium text-slate-900 dark:text-slate-100">Mantenimiento. Espera un momento</p>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">Estamos actualizando los datos climáticos.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

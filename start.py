@@ -86,9 +86,9 @@ def get_local_ip():
     except Exception:
         return "localhost"
 
-def check_port_available(port):
+def check_port_available(port, host='localhost'):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(('localhost', port)) != 0
+        return s.connect_ex((host, port)) != 0
 
 def kill_process_on_port(port):
     """Kill process using a specific port — omitido dentro de Docker."""
@@ -239,10 +239,11 @@ def start_database():
     """Iniciar PostgreSQL — en Docker la BD es manejada por docker-compose."""
     if IN_DOCKER:
         print_step(4, 5, "Esperando base de datos")
+        db_host = os.environ.get("DB_HOST", "db")
         # Esperar a que PostgreSQL esté listo (docker-compose healthcheck)
         for i in range(30):
-            if not check_port_available(5432):
-                print_success("PostgreSQL listo en puerto 5432")
+            if not check_port_available(5432, host=db_host):
+                print_success(f"PostgreSQL listo en {db_host}:5432")
                 return
             time.sleep(1)
         print_info("PostgreSQL puede seguir arrancando — el backend reintentará")
@@ -345,14 +346,14 @@ def start_frontend():
 
         if sys.platform == "win32":
             frontend_process = subprocess.Popen(
-                [npm_cmd, "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"],
+                [npm_cmd, "run", "dev"],
                 cwd=str(frontend_path),
                 creationflags=subprocess.CREATE_NEW_CONSOLE,
                 shell=True
             )
         else:
             frontend_process = subprocess.Popen(
-                ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"],
+                ["npm", "run", "dev"],
                 cwd=str(frontend_path),
                 stdout=None if IN_DOCKER else subprocess.PIPE,
                 stderr=None if IN_DOCKER else subprocess.PIPE,

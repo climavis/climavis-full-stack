@@ -54,10 +54,10 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - DOCKER=1
       - DATABASE_URL=postgresql://${POSTGRES_USER:-climavis}:${POSTGRES_PASSWORD:-climavis_secret}@db:5432/${POSTGRES_DB:-climavis}
-      - SYNC_ON_STARTUP=${SYNC_ON_STARTUP:-true}
+      - SYNC_ON_STARTUP=${SYNC_ON_STARTUP:-false}
       - DAILY_SYNC_HOUR=${DAILY_SYNC_HOUR:-6}
       - BULK_THRESHOLD_DAYS=${BULK_THRESHOLD_DAYS:-50}
-      - HISTORY_START_DATE=${HISTORY_START_DATE:-2020-01-01}
+      - HISTORY_START_DATE=${HISTORY_START_DATE:-2000-01-01}
       - TOR_SOCKS_PORT=${TOR_SOCKS_PORT:-9050}
       - TOR_ROTATE_EVERY=${TOR_ROTATE_EVERY:-2}
       # ── Límites de memoria para Node.js (Vite) ──────────────

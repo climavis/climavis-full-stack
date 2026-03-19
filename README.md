@@ -255,6 +255,51 @@ Notes:
 - File watching inside the container uses polling to improve reliability on Windows hosts.
 - Configure mapped ports with `BACKEND_PORT` and `FRONTEND_PORT` environment variables.
 
+### Data migration and first run on a new computer
+
+If you move the project to another computer, avoid a full startup sync unless needed.
+
+- Default behavior now sets `SYNC_ON_STARTUP=false`.
+- If you enable sync, it uses `HISTORY_START_DATE=2000-01-01`.
+
+To load the full historical dataset (2000+), run:
+
+```bash
+python database/scripts/import_historico.py --fetch-latest
+```
+
+To copy an existing PostgreSQL database from another machine, prefer dump/restore:
+
+```bash
+# Source machine
+pg_dump -h localhost -U climavis -d climavis -F c -f climavis.dump
+
+# Target machine
+pg_restore -h localhost -U climavis -d climavis --clean --if-exists climavis.dump
+```
+
+### Automatic DB snapshot on every push
+
+This repository now includes `.github/workflows/db-snapshot.yml`.
+
+- Trigger: every push to `main`/`master`.
+- Action: imports historical data, fetches the latest missing dates, and exports a PostgreSQL snapshot.
+- Output artifact: `climavis-db-snapshot` with:
+  - `database/snapshots/climavis_latest.dump`
+  - `database/snapshots/metadata.json`
+
+Deploy workflow on another machine:
+
+1. Download the latest `climavis-db-snapshot` artifact from GitHub Actions.
+2. Restore and update incrementally:
+
+```bash
+chmod +x database/scripts/restore_and_update.sh
+./database/scripts/restore_and_update.sh /ruta/climavis_latest.dump
+```
+
+The script runs `import_historico.py --only-latest`, so it only requests data from the last date present in DB to today.
+
 ## API endpoints
 
 Base URL: `http://localhost:8000`
