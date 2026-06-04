@@ -194,7 +194,7 @@ def import_csv(conn, csv_path: str, dry_run: bool = False):
 
 
 def fetch_and_import_latest(conn, dry_run: bool = False):
-    """Descarga datos desde el último día en la BD hasta hoy vía Tor e importa."""
+    """Descarga datos desde el último día en la BD hasta hoy e importa."""
     import requests
     import random
     import string
@@ -227,21 +227,22 @@ def fetch_and_import_latest(conn, dry_run: bool = False):
         print(f"  No hay datos faltantes.")
         return 0
 
-    # Verificar Tor
+    # Verificar Tor (si no está disponible, usar conexión directa)
     TOR_PORT = 9050
+    tor_available = False
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(3)
         result = sock.connect_ex(("127.0.0.1", TOR_PORT))
         sock.close()
-        if result != 0:
-            raise ConnectionError()
+        tor_available = (result == 0)
     except Exception:
-        print(f"  Tor no está corriendo en puerto {TOR_PORT}.")
-        print(f"  Ejecuta: sudo systemctl start tor")
-        return 0
+        tor_available = False
 
-    print(f"  Tor activo")
+    if tor_available:
+        print("  Tor activo")
+    else:
+        print("  Tor no disponible, usando conexión directa (sin rotación de IP)")
 
     # Coordenadas de los estados (mismas que el script de fetch)
     states = [
@@ -289,17 +290,18 @@ def fetch_and_import_latest(conn, dry_run: bool = False):
         "wind_direction_10m_dominant", "shortwave_radiation_sum",
     ])
 
-    # Crear sesión Tor
-    def new_tor_session():
+    # Crear sesión de requests (Tor o directa)
+    def new_session():
         s = requests.Session()
-        uid = "".join(random.choices(string.ascii_lowercase + string.digits, k=12))
-        pwd = "".join(random.choices(string.ascii_lowercase + string.digits, k=12))
-        proxy = f"socks5h://{uid}:{pwd}@127.0.0.1:{TOR_PORT}"
-        s.proxies = {"http": proxy, "https": proxy}
+        if tor_available:
+            uid = "".join(random.choices(string.ascii_lowercase + string.digits, k=12))
+            pwd = "".join(random.choices(string.ascii_lowercase + string.digits, k=12))
+            proxy = f"socks5h://{uid}:{pwd}@127.0.0.1:{TOR_PORT}"
+            s.proxies = {"http": proxy, "https": proxy}
         s.headers["User-Agent"] = "Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101 Firefox/128.0"
         return s
 
-    session = new_tor_session()
+    session = new_session()
 
     # Determinar endpoints — archive for historical, forecast for recent
     # Open-Meteo archive covers up to ~5 days ago; forecast API has recent days
@@ -322,7 +324,8 @@ def fetch_and_import_latest(conn, dry_run: bool = False):
             try:
                 r = session.get("https://archive-api.open-meteo.com/v1/archive", params=params, timeout=120)
                 if r.status_code == 429:
-                    session = new_tor_session()
+                    if tor_available:
+                        session = new_session()
                     time.sleep(2)
                     continue
                 r.raise_for_status()
@@ -341,7 +344,7 @@ def fetch_and_import_latest(conn, dry_run: bool = False):
                 break
             except Exception as e:
                 print(f"intento {attempt+1}: {e}")
-                session = new_tor_session()
+                session = new_session()
                 time.sleep(3)
 
     # Fetch from forecast API for recent days
@@ -359,7 +362,8 @@ def fetch_and_import_latest(conn, dry_run: bool = False):
             try:
                 r = session.get("https://api.open-meteo.com/v1/forecast", params=params, timeout=120)
                 if r.status_code == 429:
-                    session = new_tor_session()
+                    if tor_available:
+                        session = new_session()
                     time.sleep(2)
                     continue
                 r.raise_for_status()
@@ -380,7 +384,7 @@ def fetch_and_import_latest(conn, dry_run: bool = False):
                 break
             except Exception as e:
                 print(f"intento {attempt+1}: {e}")
-                session = new_tor_session()
+                session = new_session()
                 time.sleep(3)
 
     if not all_dfs:
@@ -471,22 +475,27 @@ def main():
                         help="Descarga datos faltantes hasta hoy via Tor")
     parser.add_argument("--dry-run", action="store_true",
                         help="Muestra qué haría sin modificar la BD")
+    parser.add_argument("--only-latest", action="store_true",
+                        help="Omite importación de CSV y solo descarga datos faltantes")
     parser.add_argument("--csv", default=CSV_PATH,
                         help=f"Ruta al CSV (default: {CSV_PATH})")
     args = parser.parse_args()
 
-    if not os.path.exists(args.csv):
+    if not args.only_latest and not os.path.exists(args.csv):
         print(f"CSV no encontrado: {args.csv}")
         print(f"Ejecuta primero: python tests/fetch_openmeteo_historico.py")
         sys.exit(1)
 
     conn = get_connection()
     try:
-        # 1. Importar CSV histórico
-        import_csv(conn, args.csv, args.dry_run)
+        # 1. Importar CSV histórico (opcional)
+        if not args.only_latest:
+            import_csv(conn, args.csv, args.dry_run)
+        else:
+            print("\n  Modo only-latest: omitiendo importación de CSV")
 
-        # 2. Descargar datos más recientes si se solicita
-        if args.fetch_latest:
+        # 2. Descargar datos más recientes
+        if args.fetch_latest or args.only_latest:
             fetch_and_import_latest(conn, args.dry_run)
 
         # Resumen final

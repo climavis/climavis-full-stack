@@ -148,6 +148,16 @@ class OpenMeteoClient:
             session.proxies = _tor_proxy(self._cred_user, self._cred_pass)
         return session
 
+    def _make_direct_session(self) -> req.Session:
+        """Sesión sin proxy Tor (fallback cuando Tor falla)."""
+        session = req.Session()
+        session.headers.update({
+            "User-Agent": random.choice(_USER_AGENTS),
+            "Accept": "application/json",
+            "Accept-Language": random.choice(["es-MX", "en-US", "es"]),
+        })
+        return session
+
     # ── GET con reintentos y rotación de IP ─────────────────────────
 
     def _get(self, url: str, params: dict) -> Any:
@@ -176,10 +186,37 @@ class OpenMeteoClient:
                 logger.warning(
                     "Intento %d/%d falló: %s", attempt, settings.max_retries, exc
                 )
+
+                # Si Tor está activo pero hay timeout de conexión, intentar directo de inmediato.
+                if self._tor_available and "timed out" in str(exc).lower():
+                    logger.warning("Timeout vía Tor detectado, probando conexión directa")
+                    direct_session = self._make_direct_session()
+                    try:
+                        resp = direct_session.get(url, params=params, timeout=45)
+                        resp.raise_for_status()
+                        return resp.json()
+                    except req.RequestException as direct_exc:
+                        last_exc = direct_exc
+                    finally:
+                        direct_session.close()
+
                 self._rotate_credentials()
                 time.sleep(2 ** attempt)
             finally:
                 session.close()
+
+        # Fallback: intentar sin Tor para evitar bloqueos largos por timeouts de proxy.
+        if self._tor_available:
+            logger.warning("Reintentando Open-Meteo sin Tor por fallos del proxy")
+            direct_session = self._make_direct_session()
+            try:
+                resp = direct_session.get(url, params=params, timeout=45)
+                resp.raise_for_status()
+                return resp.json()
+            except req.RequestException as exc:
+                last_exc = exc
+            finally:
+                direct_session.close()
 
         raise RuntimeError(
             f"Fallo tras {settings.max_retries} intentos: {last_exc}"

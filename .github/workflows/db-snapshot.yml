@@ -1,0 +1,160 @@
+name: Build Database Snapshot
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  refresh-and-export:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: climavis
+          POSTGRES_PASSWORD: climavis_secret
+          POSTGRES_DB: climavis
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U climavis"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: climavis
+      DB_USER: climavis
+      DB_PASS: climavis_secret
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download previous snapshot artifact (if available)
+        uses: dawidd6/action-download-artifact@v3
+        continue-on-error: true
+        with:
+          workflow: db-snapshot.yml
+          name: climavis-db-snapshot
+          path: database/snapshots
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install script dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas psycopg2-binary requests
+
+      - name: Ensure climate_data schema exists
+        run: |
+          python - <<'PY'
+          import psycopg2
+
+          conn = psycopg2.connect(
+              host='localhost', port=5432, dbname='climavis', user='climavis', password='climavis_secret'
+          )
+          conn.autocommit = True
+          with conn.cursor() as cur:
+              cur.execute('''
+              CREATE TABLE IF NOT EXISTS climate_data (
+                  id SERIAL PRIMARY KEY,
+                  state VARCHAR(60) NOT NULL,
+                  date DATE NOT NULL,
+                  temp_max FLOAT,
+                  temp_min FLOAT,
+                  temp_mean FLOAT,
+                  precipitation FLOAT,
+                  wind_max FLOAT,
+                  wind_gusts FLOAT,
+                  wind_direction FLOAT,
+                  humidity_max FLOAT,
+                  humidity_min FLOAT,
+                  humidity_mean FLOAT,
+                  radiation FLOAT,
+                  created_at TIMESTAMP DEFAULT NOW(),
+                  updated_at TIMESTAMP DEFAULT NOW(),
+                  CONSTRAINT uq_state_date UNIQUE (state, date)
+              )
+              ''')
+          conn.close()
+          PY
+
+      - name: Restore previous snapshot (if found)
+        run: |
+          export PGPASSWORD=climavis_secret
+          if [[ -f database/snapshots/climavis_latest.dump ]]; then
+            echo "Previous snapshot found. Restoring..."
+            pg_restore \
+              --host=localhost \
+              --port=5432 \
+              --username=climavis \
+              --dbname=climavis \
+              --clean \
+              --if-exists \
+              database/snapshots/climavis_latest.dump
+          else
+            echo "No previous snapshot found. First-run bootstrap will use full import."
+          fi
+
+      - name: Update database from latest source
+        run: |
+          if [[ -f database/snapshots/climavis_latest.dump ]]; then
+            python database/scripts/import_historico.py --only-latest
+          else
+            python database/scripts/import_historico.py --fetch-latest
+          fi
+
+      - name: Build binary snapshot
+        run: |
+          mkdir -p database/snapshots
+          export PGPASSWORD=climavis_secret
+          pg_dump \
+            --host=localhost \
+            --port=5432 \
+            --username=climavis \
+            --dbname=climavis \
+            --format=custom \
+            --file=database/snapshots/climavis_latest.dump
+
+      - name: Build metadata
+        run: |
+          python - <<'PY'
+          import json
+          import psycopg2
+
+          conn = psycopg2.connect(
+              host='localhost', port=5432, dbname='climavis', user='climavis', password='climavis_secret'
+          )
+          with conn.cursor() as cur:
+              cur.execute('SELECT MIN(date), MAX(date), COUNT(*) FROM climate_data')
+              min_date, max_date, total = cur.fetchone()
+
+          payload = {
+              'min_date': str(min_date),
+              'max_date': str(max_date),
+              'records': int(total),
+          }
+          with open('database/snapshots/metadata.json', 'w', encoding='utf-8') as f:
+              json.dump(payload, f, ensure_ascii=False, indent=2)
+
+          conn.close()
+          PY
+
+      - name: Upload database snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: climavis-db-snapshot
+          path: |
+            database/snapshots/climavis_latest.dump
+            database/snapshots/metadata.json
+          if-no-files-found: error

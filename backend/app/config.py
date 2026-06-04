@@ -26,7 +26,7 @@ class Settings:
 
     # ── Sincronización ─────────────────────────────────────────
     sync_on_startup: bool = field(
-        default_factory=lambda: os.getenv("SYNC_ON_STARTUP", "true").lower() == "true"
+        default_factory=lambda: os.getenv("SYNC_ON_STARTUP", "false").lower() == "true"
     )
     daily_sync_hour: int = field(
         default_factory=lambda: int(os.getenv("DAILY_SYNC_HOUR", "6"))
@@ -35,7 +35,7 @@ class Settings:
         default_factory=lambda: int(os.getenv("BULK_THRESHOLD_DAYS", "50"))
     )
     history_start_date: str = field(
-        default_factory=lambda: os.getenv("HISTORY_START_DATE", "2020-01-01")
+        default_factory=lambda: os.getenv("HISTORY_START_DATE", "2000-01-01")
     )
 
     # ── Throttling / rotación de peticiones ────────────────────

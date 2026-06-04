@@ -20,6 +20,8 @@ export function PredictionPanel({ selectedState, selectedYear, selectedMonth }: 
     droughtRisk: 50,
     floodRisk: 50,
     extremeWeatherRisk: 50,
+    precipitationDeltaMm: 0,
+    precipitationReference: 'sin datos suficientes',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,17 +127,27 @@ export function PredictionPanel({ selectedState, selectedYear, selectedMonth }: 
 
             <div className="flex items-center justify-between p-4 rounded-2xl glass-card relative overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-cyan-500/10" />
-              <div className="flex items-center space-x-2 relative z-10">
+              <div className="flex flex-col items-start relative z-10">
+                <div className="flex items-center space-x-2">
                 {predictions.precipitationChange > 0 ? (
                   <TrendingUp className="h-4 w-4 text-blue-500 dark:text-blue-400" />
                 ) : (
                   <TrendingDown className="h-4 w-4 text-orange-500 dark:text-orange-400" />
                 )}
                 <span className="text-sm text-gray-700 dark:text-gray-300">Precipitación</span>
+                </div>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {predictions.precipitationReference}
+                </span>
               </div>
-              <span className={`font-medium relative z-10 ${predictions.precipitationChange > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}>
-                {predictions.precipitationChange > 0 ? '+' : ''}{predictions.precipitationChange.toFixed(1)}%
-              </span>
+              <div className="text-right relative z-10">
+                <span className={`font-medium block ${predictions.precipitationChange > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                  {predictions.precipitationChange > 0 ? '+' : ''}{predictions.precipitationChange.toFixed(1)}%
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {predictions.precipitationDeltaMm > 0 ? '+' : ''}{predictions.precipitationDeltaMm.toFixed(1)} mm
+                </span>
+              </div>
             </div>
           </div>
         </div>

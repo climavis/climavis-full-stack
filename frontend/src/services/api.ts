@@ -88,6 +88,21 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
+export type DatasetFormat = 'csv' | 'json' | 'txt' | 'xlsx';
+export type DatasetGroupBy = 'none' | 'state' | 'year' | 'month';
+
+export interface DatasetExportOptions {
+  format: DatasetFormat;
+  state?: string;
+  year?: number;
+  month?: number;
+  months?: number[];
+  startDate?: string;
+  endDate?: string;
+  summary?: boolean;
+  groupBy?: DatasetGroupBy;
+}
+
 // ── Cache simple ───────────────────────────────────────────────────
 
 const cache = new Map<string, { data: any; ts: number }>();
@@ -266,6 +281,27 @@ export async function healthCheck(): Promise<boolean> {
   }
 }
 
+export function buildClimateExportUrl(options: DatasetExportOptions): string {
+  const params = new URLSearchParams();
+  params.set('formato', options.format);
+
+  if (options.state && options.state !== 'ALL') params.set('estado', options.state);
+  if (options.year) params.set('anio', String(options.year));
+  if (options.month) params.set('mes', String(options.month));
+  if (options.months && options.months.length) params.set('meses', options.months.join(','));
+  if (options.startDate) params.set('fecha_inicio', options.startDate);
+  if (options.endDate) params.set('fecha_fin', options.endDate);
+  if (options.summary) params.set('resumen', 'true');
+  if (options.groupBy) params.set('agrupar_por', options.groupBy);
+
+  return `${API_BASE_URL}/api/clima/export?${params.toString()}`;
+}
+
+export function downloadClimateDataset(options: DatasetExportOptions) {
+  const url = buildClimateExportUrl(options);
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 /**
  * Predicciones calculadas con datos del backend.
  */
@@ -279,9 +315,14 @@ export async function getClimatePredictions(
   droughtRisk: number;
   floodRisk: number;
   extremeWeatherRisk: number;
+  precipitationDeltaMm: number;
+  precipitationReference: string;
   historicalAverage: { temperature: number; precipitation: number };
 }> {
   try {
+    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+    const round1 = (value: number) => Math.round(value * 10) / 10;
+
     const currentStats = await getClimateStats(estado, { anio, mes });
 
     // Promedio histórico: 5 años previos
@@ -300,19 +341,39 @@ export async function getClimatePredictions(
       ? valid.reduce((s, d) => s + d.precipitacion.promedio, 0) / valid.length
       : currentStats.precipitacion.promedio;
 
+    const previousMonth = mes === 1 ? 12 : mes - 1;
+    const previousMonthYear = mes === 1 ? anio - 1 : anio;
+    const previousMonthStats = await getClimateStats(estado, {
+      anio: previousMonthYear,
+      mes: previousMonth,
+    }).catch(() => null);
+
+    const previousMonthPrecip = previousMonthStats?.precipitacion?.promedio ?? 0;
+
     const temperatureChange = currentStats.temperatura.promedio - historicalAvgTemp;
-    const precipitationChange = historicalAvgPrecip > 0
-      ? ((currentStats.precipitacion.promedio - historicalAvgPrecip) / historicalAvgPrecip) * 100
+    const precipitationDeltaMm = currentStats.precipitacion.promedio - previousMonthPrecip;
+    const canCompareToPreviousMonth = previousMonthPrecip >= 1;
+    const precipitationReference = canCompareToPreviousMonth
+      ? 'respecto al mes anterior'
+      : 'sin base suficiente del mes anterior';
+
+    // Evita saltos extremos (100%/0%) cuando el mes anterior tiene lluvia casi nula.
+    const precipitationChange = canCompareToPreviousMonth
+      ? clamp(((currentStats.precipitacion.promedio - previousMonthPrecip) / previousMonthPrecip) * 100, -100, 300)
       : 0;
 
+    const precipBaseline = canCompareToPreviousMonth
+      ? previousMonthPrecip
+      : Math.max(historicalAvgPrecip, 1);
+
     const droughtRisk = Math.min(100, Math.max(0,
-      (100 - (currentStats.precipitacion.promedio / Math.max(historicalAvgPrecip, 1)) * 100) * 0.6 +
+      (100 - (currentStats.precipitacion.promedio / precipBaseline) * 100) * 0.6 +
       (temperatureChange > 0 ? temperatureChange * 10 : 0) * 0.4
     ));
 
     const floodRisk = Math.min(100, Math.max(0,
-      currentStats.precipitacion.promedio > historicalAvgPrecip * 1.5
-        ? ((currentStats.precipitacion.promedio / historicalAvgPrecip) - 1) * 50
+      currentStats.precipitacion.promedio > precipBaseline * 1.5
+        ? ((currentStats.precipitacion.promedio / precipBaseline) - 1) * 50
         : 20
     ));
 
@@ -322,11 +383,13 @@ export async function getClimatePredictions(
     ));
 
     return {
-      temperatureChange,
-      precipitationChange,
-      droughtRisk,
-      floodRisk,
-      extremeWeatherRisk,
+      temperatureChange: round1(temperatureChange),
+      precipitationChange: round1(precipitationChange),
+      droughtRisk: round1(droughtRisk),
+      floodRisk: round1(floodRisk),
+      extremeWeatherRisk: round1(extremeWeatherRisk),
+      precipitationDeltaMm: round1(precipitationDeltaMm),
+      precipitationReference,
       historicalAverage: { temperature: historicalAvgTemp, precipitation: historicalAvgPrecip },
     };
   } catch {
@@ -336,6 +399,8 @@ export async function getClimatePredictions(
       droughtRisk: 50,
       floodRisk: 50,
       extremeWeatherRisk: 50,
+      precipitationDeltaMm: 0,
+      precipitationReference: 'sin datos suficientes',
       historicalAverage: { temperature: 25, precipitation: 50 },
     };
   }
